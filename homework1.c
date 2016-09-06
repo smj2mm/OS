@@ -10,13 +10,24 @@ int main() {
     fgets(input, 101, stdin);
     input[strcspn(input, "\n")] = 0;
     //scanf("%100s", input);
-    // check for exit string
+    
+		// check for exit string
+		if(strcmp("exit", input)==0)
+			exit(0);
 
-    //printf(strlen(input));
-    if(strcmp("exit",input)==0) 
-      exit(0);
-    else
-      printf("%s \n", input);
+		char** tokens;
+		tokens = malloc(101 * (sizeof(char*)));
+
+		char* token = strtok(input, " ");
+		
+		int i = 0;
+		while(token != NULL) {
+			tokens[i] = malloc(sizeof(token));
+			printf("%s \n", token);
+			token = strtok(NULL, " ");
+			i++;
+      //printf("%s \n", input);
+		}
   }
   return 0;
 }
