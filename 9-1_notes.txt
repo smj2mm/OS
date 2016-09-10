@@ -1,0 +1,20 @@
+//int fork()
+
+int p = fork()
+// process id of child created
+// child: p=0
+
+if(p==0) {
+	// I am the child - usually start another program
+}
+
+// everytime fork happens, everything inherited from parent
+
+parent knows child, initially child doesn't know parent
+
+	--PID is immutable until death
+	--ps used to show tree-like structure
+	- top = see what's up
+
+Why fork? to start other processes
+After fork, both parent and child are READY to run
