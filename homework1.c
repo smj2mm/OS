@@ -69,6 +69,68 @@ void forkAndHandle(char** command) {
 	}
 }
 
+void createTokenGroups(char*** tokenGroups, int* numTokenGroups, char** tokens, int numTokens) {
+	tokenGroups[0] = &tokens[0];
+	int i; int j=1;
+	for(i=1; i<numTokens; i++) {
+		if(strcmp(tokens[i],"|") == 0) {
+			//printf("%s\n", tokens[i+1]);
+			tokenGroups[j] = &tokens[i+1];
+			j++;
+		}
+	}
+	*numTokenGroups = j;
+}
+
+void printTokenGroups(char *** tokenGroupAddresses, int numTokenGroups) {
+	int i, j;
+	for(i=0; i<numTokenGroups; i++) {
+		j=0; char * iterator = "";
+		printf("%s\n", "----------");
+		if(i == numTokenGroups-1) {
+			while(iterator) {
+				printf("%s\n", *(tokenGroupAddresses[i]+j));
+				iterator = *(tokenGroupAddresses[i]+j+1);
+				j++;
+			}
+		}
+		else {
+			while(strcmp(iterator, "|")!=0) {
+				printf("%s\n", *(tokenGroupAddresses[i]+j));
+				iterator = *(tokenGroupAddresses[i]+j+1);
+				j++;
+			}
+		}
+	}
+}
+
+void handleTokenGroups(char *** tokenGroupAddresses, int numTokenGroups) {	
+	int i, j;
+	char** args = malloc(50 * sizeof(char*));
+	memset(args, 0, 50*sizeof(char*));
+	for(i=0; i<numTokenGroups; i++) {
+		j=0; char * iterator = "";
+		printf("%s\n", "----------");
+		if(i == numTokenGroups-1) {
+			while(iterator) {
+				//printf("%s\n", *(tokenGroupAddresses[i]+j));
+				args[j] = *(tokenGroupAddresses[i]+j);
+				iterator = *(tokenGroupAddresses[i]+j+1);
+				j++;
+			}
+		}
+		else {
+			while(strcmp(iterator, "|")!=0) {
+				//printf("%s\n", *(tokenGroupAddresses[i]+j));
+				args[j] = *(tokenGroupAddresses[i]+j);
+				iterator = *(tokenGroupAddresses[i]+j+1);
+				j++;
+			}
+		}
+		forkAndHandle(tokenGroupAddresses[i]);
+	}
+}
+
 int main() {
   while(1) {
     // make room for 100 characters for each thing user enters
@@ -89,31 +151,23 @@ int main() {
 		int numTokens = 0;
 		createTokenArray(token, tokens, &numTokens);
 		
-		int i=0;
-		
-		/*
-		for(i=0; i<numTokens; i++) {
-			//printf("%s \n", tokens[i]);
-			int validEntry = isValidWord(tokens[i]);
-		}
-		*/
-
 		if(!isValidCombination(tokens, numTokens)) {
 			printf("Error in entry\n");
 		}
 		else {
-			forkAndHandle(&tokens[0]);
+			;;
+			//forkAndHandle(&tokens[0]);
 		}
-		/*
-		int i = 0;
-		while(token != NULL) {
-			tokens[i] = malloc(sizeof(token));
-			printf("%s \n", token);
-			token = strtok(NULL, " ");
-			i++;
-      //printf("%s \n", input);
-		}
-		*/
+
+		char*** tokenGroupAddresses;
+		tokenGroupAddresses = malloc(101 * (sizeof(char**)));
+		int numTokenGroups = 0;
+		//printf("%s\n", "CREATING TOKENGROUPS");
+		createTokenGroups(tokenGroupAddresses, &numTokenGroups, tokens, numTokens);
+		//printf("%s\n", "END CREATING TOKENGROUPS");
+
+		printTokenGroups(tokenGroupAddresses, numTokenGroups);
+		handleTokenGroups(tokenGroupAddresses, numTokenGroups);
   }
   return 0;
 }
