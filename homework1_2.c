@@ -6,8 +6,11 @@
 #include <unistd.h>
 
 struct TokenGroupInfo {
-	char** allTokens;
+	char** address;
 	char** args;
+	char* operator;
+	char* afterOperator;
+	int groupSize;
 };
 
 void createTokenArray(char* token, char** tokens, int* numTokens) {
@@ -60,13 +63,13 @@ int isValidCombination(char** tokens, int numTokens) {
 	return 1;
 }
 
-void forkAndHandle(char** command) {
+void forkAndHandle(char** command, char** args) {
 
 	int p = fork();
 	//printf("%s\n",command);
 	if (p==0) {
 		//printf("I'm the child");
-		execve(*command, command, NULL);
+		execve(*command, args, NULL);
 	}
 	else {
 		int status;
@@ -74,14 +77,18 @@ void forkAndHandle(char** command) {
 	}
 }
 
-void createTokenGroups(char*** tokenGroups, int* numTokenGroups, char** tokens, int numTokens) {
-	tokenGroups[0] = &tokens[0];
+void createTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int* numTokenGroups, char** tokens, int numTokens) {
+	tokenGroupAddresses[0].address = &tokens[0];
 	int i; int j=1;
 	for(i=1; i<numTokens; i++) {
 		if(strcmp(tokens[i],"|") == 0) {
 			//printf("%s\n", tokens[i+1]);
-			tokenGroups[j] = &tokens[i+1];
+			tokenGroupAddresses[j].address = &tokens[i+1];
 			j++;
+		}
+		if(strcmp(tokens[i], "<") == 0 || strcmp(tokens[i], ">") == 0) {
+			tokenGroupAddresses[j].operator = tokens[i];
+			//printf("%s\n", tokens[i]);
 		}
 	}
 	*numTokenGroups = j;
@@ -109,32 +116,60 @@ void printTokenGroups(char *** tokenGroupAddresses, int numTokenGroups) {
 	}
 }
 
-void handleTokenGroups(char *** tokenGroupAddresses, int numTokenGroups, char** args) {	
+void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenGroups) {	
 	int i, j;
-	
+
+	//TokenGroupInfo* t = (TokenGroupInfo*)(malloc(sizeof(TokenGroupInfo)));
+
 	for(i=0; i<numTokenGroups; i++) {
 		j=0; char * iterator = "";
-		printf("%s\n", "----------");
+		printf("%s", "-------\n");
+		tokenGroupAddresses[i].args = (char**)malloc(50*sizeof(char*));
+		memset(tokenGroupAddresses[i].args,0,50*sizeof(char*));
+		int processingArguments = 1;
+
+		iterator = *(tokenGroupAddresses[i].address);
+		printf("%s\n", iterator);
 
 		if(i == numTokenGroups-1) {
 			while(iterator) {
-				//printf("%s\n", *(tokenGroupAddresses[i]+j));
-				args[j] = *(tokenGroupAddresses[i]+j);
-				printf("%s", args[j]);
-				iterator = *(tokenGroupAddresses[i]+j+1);
+			
+				if(processingArguments) {
+					// append to argument array
+					if(!tokenGroupAddresses[i].address[j+1]) {
+						;;
+					}
+					else if(isOperator(tokenGroupAddresses[i].address[j+1])) {
+						// if the next thing is an operator
+						processingArguments = 0;
+					}
+					tokenGroupAddresses[i].args[j] = tokenGroupAddresses[i].address[j];
+					printf("%s %d %s", "arg", j, ": ");
+					printf("%s\n", tokenGroupAddresses[i].args[j]);
+				}
+				iterator = tokenGroupAddresses[i].address[j+1];
 				j++;
 			}
 		}
+		
 		else {
 			while(strcmp(iterator, "|")!=0) {
 				//printf("%s\n", *(tokenGroupAddresses[i]+j));
-				args[j] = *(tokenGroupAddresses[i]+j);
-				printf("%s", args[j]);
-				iterator = *(tokenGroupAddresses[i]+j+1);
+				if(processingArguments) {
+					// append to argument array
+					if(isOperator(tokenGroupAddresses[i].address[j+1])) {
+						// if the next thing is an operator
+						processingArguments = 0;
+					}
+					tokenGroupAddresses[i].args[j] = tokenGroupAddresses[i].address[j];
+					printf("%s %d %s", "arg", j, ": ");
+					printf("%s\n", tokenGroupAddresses[i].args[j]);
+				}
+				iterator = tokenGroupAddresses[i].address[j+1];
 				j++;
 			}
 		}
-		forkAndHandle(tokenGroupAddresses[i]);
+		forkAndHandle(tokenGroupAddresses[i].address, tokenGroupAddresses[i].args);
 	}
 }
 
@@ -145,7 +180,6 @@ int main() {
     printf("$ ");
     fgets(input, 101, stdin);
     input[strcspn(input, "\n")] = 0;
-    //scanf("%100s", input);
     
 		// check for exit string
 		if(strcmp("exit", input)==0)
@@ -153,6 +187,7 @@ int main() {
 
 		char** tokens;
 		tokens = malloc(101 * (sizeof(char*)));
+		memset(tokens,0, 101 * sizeof(char*));
 
 		char* token = strtok(input, " ");
 		int numTokens = 0;
@@ -166,18 +201,19 @@ int main() {
 			//forkAndHandle(&tokens[0]);
 		}
 		
-		char*** tokenGroupAddresses;
-		tokenGroupAddresses = malloc(101 * (sizeof(char**)));
+		struct TokenGroupInfo* tokenGroupAddresses;
+		tokenGroupAddresses = (struct TokenGroupInfo*)(malloc(20 * (sizeof(struct TokenGroupInfo))));
 		int numTokenGroups = 0;
 		//printf("%s\n", "CREATING TOKENGROUPS");
 		createTokenGroups(tokenGroupAddresses, &numTokenGroups, tokens, numTokens);
 		//printf("%s\n", "END CREATING TOKENGROUPS");
 
-		printTokenGroups(tokenGroupAddresses, numTokenGroups);
-		
-		char** args = malloc(50 * sizeof(char*));
-		memset(args, 0, 50 * sizeof(char*));
-		handleTokenGroups(tokenGroupAddresses, numTokenGroups, args);
+		//printTokenGroups(tokenGroupAddresses, numTokenGroups);
+		//char** args = malloc(50 * sizeof(char*));
+		//memset(args, 0, 50 * sizeof(char*));
+		//printf("%s", args[0]);
+		//printf("%s", args[1]);
+		handleTokenGroups(tokenGroupAddresses, numTokenGroups);
   }
   return 0;
 }
