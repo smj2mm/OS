@@ -116,7 +116,7 @@ void printTokenGroups(char *** tokenGroupAddresses, int numTokenGroups) {
 	}
 }
 
-void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenGroups) {	
+void fillTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenGroups) {	
 	int i, j;
 
 	//TokenGroupInfo* t = (TokenGroupInfo*)(malloc(sizeof(TokenGroupInfo)));
@@ -133,9 +133,9 @@ void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenG
 
 		if(i == numTokenGroups-1) {
 			while(iterator) {
-			
+				//if we haven't hit an operator yet
 				if(processingArguments) {
-					// append to argument array
+					// append to arguments to argument array
 					if(!tokenGroupAddresses[i].address[j+1]) {
 						;;
 					}
@@ -146,6 +146,14 @@ void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenG
 					tokenGroupAddresses[i].args[j] = tokenGroupAddresses[i].address[j];
 					printf("%s %d %s", "arg", j, ": ");
 					printf("%s\n", tokenGroupAddresses[i].args[j]);
+				}
+				else {
+					if(isOperator(iterator)) {
+						tokenGroupAddresses[i].operator = iterator;
+					}
+					else {
+						tokenGroupAddresses[i].afterOperator = iterator;
+					}
 				}
 				iterator = tokenGroupAddresses[i].address[j+1];
 				j++;
@@ -164,6 +172,14 @@ void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenG
 					tokenGroupAddresses[i].args[j] = tokenGroupAddresses[i].address[j];
 					printf("%s %d %s", "arg", j, ": ");
 					printf("%s\n", tokenGroupAddresses[i].args[j]);
+				}
+				else {
+					if(isOperator(iterator)) {
+						tokenGroupAddresses[i].operator = iterator;
+					}
+					else {
+						tokenGroupAddresses[i].afterOperator = iterator;
+					}
 				}
 				iterator = tokenGroupAddresses[i].address[j+1];
 				j++;
@@ -213,7 +229,7 @@ int main() {
 		//memset(args, 0, 50 * sizeof(char*));
 		//printf("%s", args[0]);
 		//printf("%s", args[1]);
-		handleTokenGroups(tokenGroupAddresses, numTokenGroups);
+		fillTokenGroups(tokenGroupAddresses, numTokenGroups);
   }
   return 0;
 }
