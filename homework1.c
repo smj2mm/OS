@@ -12,8 +12,8 @@
 struct TokenGroupInfo {
 	char** address;
 	char** args;
-	char* redir_out;
-	char* redir_in;
+	char* fileSpecOut;
+	char* fileSpecIn;
 	char* afterOperator;
 };
 
@@ -122,11 +122,11 @@ void createTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int* numToken
 				k++;
 			}
 			if(strcmp(tokens[i], "<") == 0) {
-				tokenGroupAddresses[j].redir_in = tokens[i];
-				printf("%s %d\n", tokenGroupAddresses[j].redir_in, j);
+				tokenGroupAddresses[j].fileSpecIn = tokens[i+1];
+				printf("%s %d\n", tokenGroupAddresses[j].fileSpecIn, j);
 			}	
 			else if(strcmp(tokens[i], ">") == 0)
-				tokenGroupAddresses[j].redir_out = tokens[i];
+				tokenGroupAddresses[j].fileSpecOut = tokens[i+1];
 		}
 	}
 	*numTokenGroups = j;
@@ -170,13 +170,13 @@ void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenG
 	//TokenGroupInfo* t = (TokenGroupInfo*)(malloc(sizeof(TokenGroupInfo)));
 	for(i=0; i<=numTokenGroups; i++) {
 		j=0; char * iterator = "";
-		if(tokenGroupAddresses[i].redir_in) {
+		if(tokenGroupAddresses[i].fileSpecIn) {
 			printf("%s\n", "REDIRECTING IN");
 			
 			int p = fork();
 			if(p==0) {
-				printf("%s\n", tokenGroupAddresses[i].redir_in + 1);
-				int fd = open(tokenGroupAddresses[i].redir_in + 1, O_RDONLY);
+				printf("I AM THE CHILD %s\n", tokenGroupAddresses[i].fileSpecIn);
+				int fd = open(tokenGroupAddresses[i].fileSpecIn, O_RDONLY);
 				dup2(fd, STDIN_FILENO);
 				execve(*(tokenGroupAddresses[i].address), tokenGroupAddresses[i].args, NULL);
 			}
@@ -185,11 +185,11 @@ void handleTokenGroups(struct TokenGroupInfo* tokenGroupAddresses, int numTokenG
 			}
 		}
 
-		if(tokenGroupAddresses[i].redir_out) {
+		if(tokenGroupAddresses[i].fileSpecOut) {
 			int p = fork();
 			if(p==0) {
 				// If this is the child process
-				int fd = open(tokenGroupAddresses[i].redir_out - 1, O_RDONLY);
+				int fd = open(tokenGroupAddresses[i].fileSpecOut, O_RDONLY);
 				dup2(fd, STDOUT_FILENO);
 				execve(*(tokenGroupAddresses[i].address), tokenGroupAddresses[i].args, NULL);
 			}
