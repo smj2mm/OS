@@ -1,0 +1,28 @@
+/bin/grep -n s < inputCat.txt | /bin/grep -n s | /bin/grep -n s | /usr/bin/sort > testOutput.txt
+/bin/cat testOutput.txt
+/bin/grep -n s < inputCat.txt
+/bin/ls > testOutput2.txt
+/bin/cat testOutput2.txt
+/bin/grep -n s < inputCat.txt > testOutput2.txt
+/bin/grep -n s > testOutput2.txt < inputCat.txt
+/bin/ls | /bin/grep -n s
+/bin/ls | /bin/grep -n s > testOutput3.txt
+/bin/cat testOutput3.txt
+/bin/grep -n s < inputCat.txt | /bin/grep -n s
+
+
+
+
+/bin/grep -n s > inputCat.txt | /bin/grep -n s
+/bin/grep -n s < inputCat.txt | /bin/grep -n s | < testOut.t
+/bin/grep -n s > inputCat.txt | /bin/grep -n s > testOut.txt | /bin/grep -i
+/bin/grep -n s > inputCat.txt | /bin/grep -n s < testOut.txt | /bin/grep -i
+/bin/grep -n s < inputCat.txt | /bin/grep% -n s | /bin/grep -n s | /usr/bin/sort > testOutput.txt
+/bin/grep -n s < inputCat.txt| /bin/grep -n s | /bin/grep -n s | /usr/bin/sort > testOutput.txt
+/bin/grep -n s < inputCat.txt | /bin/grep -n s | /bin/grep -n s | /usr/bin/sort < testOutput.txt
+/bin/grep -n s < inputCat.txt | /bin/grep -n s | /bin/grep -n s | /usr/bin/sort > testOutput.txt i am way more than 100 chars and just here to test that one part of the requirements nlahalfhdslugsdlighslihglskdjflksjdflksdjflkdsjflksdjflkdsjlfkjdslkfjdslkfjlkdsjflkdsjflksdjflksdjflksdjflksdjflksjdlfksjdlfkjsdlkfjlsdkfjlksdjflksddjflksdjflksdjlfkjsdlfkjsdkjfksdjflksdjflksdjflksdjlfkjsdlkfjsdlkjlsdkjflksdjfldskjldsk
+
+
+/bin/ls
+
+/bin/cat notReal.txt

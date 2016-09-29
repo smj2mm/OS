@@ -1,10 +1,3 @@
-/*
-* Steven Jenny
-* 9/28/2016
-* CS 4414
-* Writing Your Own Shell
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,29 +10,27 @@
 #define STD_OUT 1
 
 struct TokenGroupInfo {
-/*All information needed for reference within a tokengroup*/	
-	char* command;			// First token following pipe
-	char** args;				// Command and following arguments
-	char* fileSpecOut;	// Token following '>'
-	char* fileSpecIn;		// Token following '<' 
-	int fds[2];					// File descriptors for pipes
+	char* command;
+	char** args;
+	char* fileSpecOut;
+	char* fileSpecIn;
+	int fds[2];
 };
 
 void createTokenArray(char* token, char** tokens, int* numTokens) {
 	int i = 0;
 	while(token != NULL) {
-		// create space, add token
 		tokens[i] = malloc(sizeof(token));
 		tokens[i] = token;
+		//printf("%s \n", token);
 		token = strtok(NULL, " ");
 		i++;
-		// update number of tokens
 		*numTokens=i;
+    //printf("%s \n", input);
 	}
 }
 
 int isOperator(char* token) {
-	/* Returns 1 if is one of '<', '>', and '|' */
 	if(strcmp(token, "<") == 0 || strcmp(token, ">") == 0 || strcmp(token, "|") == 0)
 		return 1;
 	else	
@@ -47,21 +38,21 @@ int isOperator(char* token) {
 }
 
 int isValidWord(char* token) {
-	/* A-Z, a-z, 0-9, dash, dot, forward slash, and underscore are only valid characters (after spaces removed)*/
+	// if(strstr(sent, word) != NULL) - strstr returns pointer to the start of the word in sent if the word word is found
+	// A-Z, a-z, 0-9, dash, dot, forward slash, and underscore are only valid characters (after spaces removed)
 	regex_t preg;
 	int reti = 0;
-	// Create and compile regular expression to satisfy above conditions
 	char* regString = "^[0-9a-zA-Z_/.-]*$";
 	reti = regcomp(&preg, regString, 0);
 	reti = regexec(&preg, token, 0, NULL, 0);
 	if(reti) {
+		//printf("There is an error in your entry\n");
 		return 0;
 	}
 	return 1;
 }
 
 int isValidCombination(char** tokens, int numTokens) {
-	/* Check for valid individual tokens and valid combinations*/
 	int i;
 	for(i=0; i<numTokens; i++) {
 		if(!(isValidWord(tokens[i]) || isOperator(tokens[i]))) {
@@ -72,26 +63,33 @@ int isValidCombination(char** tokens, int numTokens) {
 				return 0;
 			}
 		}
-		if(i<numTokens-1) {
-			if(isOperator(tokens[i]) && isOperator(tokens[i+1]))
-				return 0;
+		/*
+		if(isOperator(tokens[i]) && isOperator(tokens[i+1])) {
+			return 0;
 		}
+		*/
 	}
 	return 1;
 }
 
-void destroyTokenGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
-	/* Free malloc'd space for token groups */
-	int i;
-	for(i=0; i<=lastGroupIndex; i++) {
-		free(tokenGroups[i].args);
+void forkAndHandle(char** command, char** args) {
+
+	int p = fork();
+	//printf("%s\n",command);
+	if (p==0) {
+		//printf("I'm the child");
+		execve(*command, args, NULL);
 	}
-	free(tokenGroups);
+	else {
+		int code;
+		WEXITSTATUS(code);
+		waitpid(p, &code, 0);
+	}
 }
 
+
 void createTokenGroups(struct TokenGroupInfo* tokenGroups, int* lastGroupIndex, char** tokens, int numTokens) {
-	/* Creates pointers to token groups, which store information on tokens in between or outside of pipes*/
-	// Specify address of command and allocate space for arguments
+
 	tokenGroups[0].command = tokens[0];
 	tokenGroups[0].args = (char**)malloc(50*sizeof(char*));
 	memset(tokenGroups[0].args,0,50*sizeof(char*));
@@ -100,7 +98,7 @@ void createTokenGroups(struct TokenGroupInfo* tokenGroups, int* lastGroupIndex, 
 	// j is index for tokenGroup number
 	// k is index for argument number
 	int i; int j=0; int k=0;
-	int processingArguments = 1;	// Used as flag for whether still processing arguments
+	int processingArguments = 1;
 
 	for(i = 0; i<numTokens; i++) {
 		
@@ -124,10 +122,13 @@ void createTokenGroups(struct TokenGroupInfo* tokenGroups, int* lastGroupIndex, 
 					}
 				}	
 				tokenGroups[j].args[k] = tokens[i];
+				//printf("%s %d %s", "arg", k, ": ");
+				//printf("%s\n", tokenGroups[j].args[k]);
 				k++;
 			}
 			if(strcmp(tokens[i], "<") == 0) {
 				tokenGroups[j].fileSpecIn = tokens[i+1];
+				printf("%s %d\n", tokenGroups[j].fileSpecIn, j);
 			}	
 			else if(strcmp(tokens[i], ">") == 0)
 				tokenGroups[j].fileSpecOut = tokens[i+1];
@@ -178,27 +179,24 @@ void checkGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 	int i;
 	for(i=0; i<lastGroupIndex; i++) {
 		// Make number of groups - 1 pipes
-		if(i==0 || i==lastGroupIndex) {
-			if(i==0) {
-				// First group - could have redirect in 
-				if(tokenGroups[i].fileSpecOut) {
-					printf("%s\n", "invalid input");
-					//fprintf(stderr, "%d\n", );
-				}
+		if(i==0) {
+			// First group - could have redirect in 
+			if(tokenGroups[i].fileSpecOut) {
+				printf("%s\n", "invalid input");
+				//fprintf(stderr, "%d\n", );
 			}
-			if(i==lastGroupIndex) {
-				// Last group - could have redirect out
-				if(tokenGroups[i].fileSpecIn) {
-					printf("%s\n", "invalid input");
-					//fprintf(stderr, "%d\n", );
-				}
+		}
+		if(i==lastGroupIndex) {
+			// Last group - could have redirect out
+			if(tokenGroups[i].fileSpecIn) {
+				printf("%s\n", "invalid input");
+				//fprintf(stderr, "%d\n", );
 			}
 		}
 		else { 
 			// Neither first nor last group - no redirects
 			if(tokenGroups[i].fileSpecIn || tokenGroups[i].fileSpecOut) {	
-				printf("In %s\n Out %s\n",tokenGroups[i].fileSpecIn, tokenGroups[i].fileSpecOut);
-				printf("%s\n", "invalid input 3");
+				printf("%s\n", "invalid input");
 				//fprintf(stderr, "%d\n", );
 			}
 		}
@@ -219,7 +217,8 @@ void createPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 	for (i=0; i<lastGroupIndex; i++) {
 		pipe(buffer);
 		tokenGroups[i].fds[1] = buffer[1]; 			// write
-		tokenGroups[i+1].fds[0] = buffer[0];		// read	
+		tokenGroups[i+1].fds[0] = buffer[0];		// read
+		
 	}
 
 	// SPECIAL CASE - LAST GROUP WRITE
@@ -248,22 +247,24 @@ void printPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 	printf("    tokenGroups[%d].fds[1] = %d\n", lastGroupIndex, tokenGroups[lastGroupIndex].fds[1]);	
 }
 
+
 void handleTokenGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {	
 	int i; int j;
 
+	//TokenGroupInfo* t = (TokenGroupInfo*)(malloc(sizeof(TokenGroupInfo)));
 	for (i=0; i<=lastGroupIndex; i++) {
 		int p = fork();
 		if (p==0) {
 			// THIS IS THE CHILD
+			//printf("%s\n", "around l. 213");
 			if (tokenGroups[i].fds[0] > -1) 
 				dup2(tokenGroups[i].fds[0], STDIN_FILENO);
 			if (tokenGroups[i].fds[1] > -1) 
 				dup2(tokenGroups[i].fds[1], STDOUT_FILENO);
 			
 			for (j=0; j<lastGroupIndex; j++) {
-				// close all other pipes not used by child
+				// close all other pipes
 				if (j!=i) {
-					//only attempt to close if the file descriptor is valid
 					if (tokenGroups[j].fds[0] > -1)
 						close(tokenGroups[j].fds[0]);	// close read to pipe j
 					if (tokenGroups[j].fds[1] > -1)
@@ -274,27 +275,25 @@ void handleTokenGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 		}
 		else {
 			// THIS IS THE PARENT
-			// for each valid file dsecriptor, close the pipes
+			
 			if(tokenGroups[i].fds[0] > -1)
 				close(tokenGroups[i].fds[0]);
 			if(tokenGroups[i].fds[1] > -1)
 				close(tokenGroups[i].fds[1]);
 			int status;
-			// suspend execution until child has changed state
 			waitpid(p, &status, 0);
-			fprintf(stderr, "%d\n", status);
 		}
 	}
 }
 
 int main() {
-	
   while(1) {
-    // make room for 100 characters for each token user enters
+	//while(!feof(stdin))
+    // make room for 100 characters for each thing user enters
     char* input = (char*)(malloc(101 * sizeof(char))); 
-    printf("$ "); //INCLUDED FOR TESTING
-    fgets(input, 101, stdin); 				// read line and store into input
-    input[strcspn(input, "\n")] = 0;	//
+    printf("$ ");
+    fgets(input, 101, stdin);
+    input[strcspn(input, "\n")] = 0;
     
 		// check for exit string
 		if(strcmp("exit", input)==0)
@@ -312,9 +311,6 @@ int main() {
 		if(!isValidCombination(tokens, numTokens)) {
 			printf("invalid input\n");
 		}
-		else if(strcmp("", input)==0) {
-			/*do nothing with empty input*/; 
-		}
 		else {
 			struct TokenGroupInfo* tokenGroups;
 			tokenGroups = (struct TokenGroupInfo*)(malloc(20 * (sizeof(struct TokenGroupInfo))));
@@ -327,11 +323,7 @@ int main() {
 			createPipes(tokenGroups, lastGroupIndex);
 			//printPipes(tokenGroups, lastGroupIndex);
 			handleTokenGroups(tokenGroups, lastGroupIndex);
-			destroyTokenGroups(tokenGroups, lastGroupIndex); // garbage collection
 		}	
-		free(input);
-		free(pids);
-		free(tokens);
   }
   return 0;
 }
