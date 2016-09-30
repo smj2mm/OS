@@ -106,36 +106,41 @@ void createTokenGroups(struct TokenGroupInfo* tokenGroups, int* lastGroupIndex, 
 	int processingArguments = 1;	// Used as flag for whether still processing arguments
 
 	for(i = 0; i<numTokens; i++) {
-		
+		// if we see a pipe, start setting up the next token group	
 		if(strcmp(tokens[i], "|") == 0) {	
 			processingArguments = 1;
 			tokenGroups[j+1].command = tokens[i+1];
-			//printf("%d %s\n",j+1,*(tokenGroups[j+1].command));
 			j++;
+			// create argument array for next token group
 			tokenGroups[j].args = (char**)malloc(50*sizeof(char*));
 			memset(tokenGroups[j].args,0,50*sizeof(char*));
 			k=0;
 		}
 
 		else {
+			// if the argument array is still being created
 			if(processingArguments) {
-				// append to arguments to argument array
 				if(tokens[i+1]) {
+					// if the next token is an operator, there are no more arguments
 					if(isOperator(tokens[i+1])) {
 					  // if the next thing is an operator
 						processingArguments = 0;
 					}
-				}	
+				}
+				// append arguments to argument array
 				tokenGroups[j].args[k] = tokens[i];
 				k++;
 			}
+			// check for redirect in, and if present, set pointer to file
 			if(strcmp(tokens[i], "<") == 0) {
 				tokenGroups[j].fileSpecIn = tokens[i+1];
-			}	
+			}
+			// check for redirect out, and if present, set pointer to file
 			else if(strcmp(tokens[i], ">") == 0)
 				tokenGroups[j].fileSpecOut = tokens[i+1];
 		}
 	}
+	// set the value of the last group index for later indexing
 	*lastGroupIndex = j;
 }
 
@@ -186,14 +191,12 @@ void checkGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 				// First group - could have redirect in 
 				if(tokenGroups[i].fileSpecOut) {
 					printf("%s\n", "invalid input");
-					//fprintf(stderr, "%d\n", );
 				}
 			}
 			if(i==lastGroupIndex) {
 				// Last group - could have redirect out
 				if(tokenGroups[i].fileSpecIn) {
 					printf("%s\n", "invalid input");
-					//fprintf(stderr, "%d\n", );
 				}
 			}
 		}
@@ -201,14 +204,14 @@ void checkGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 			// Neither first nor last group - no redirects
 			if(tokenGroups[i].fileSpecIn || tokenGroups[i].fileSpecOut) {	
 				printf("In %s\n Out %s\n",tokenGroups[i].fileSpecIn, tokenGroups[i].fileSpecOut);
-				printf("%s\n", "invalid input 3");
-				//fprintf(stderr, "%d\n", );
+				printf("%s\n", "invalid input");
 			}
 		}
 	}
 }
 
 void createPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
+	/* create all pipes - set file descriptors of tokenGroups */
 	int i;
 	int buffer[2];
 
@@ -218,11 +221,10 @@ void createPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 	else
 		tokenGroups[0].fds[0] = -1;
 	
-	//
 	for (i=0; i<lastGroupIndex; i++) {
 		pipe(buffer);
-		tokenGroups[i].fds[1] = buffer[1]; 			// write
-		tokenGroups[i+1].fds[0] = buffer[0];		// read	
+		tokenGroups[i].fds[1] = buffer[1]; 			// write pipe
+		tokenGroups[i+1].fds[0] = buffer[0];		// read	pipe
 	}
 
 	// SPECIAL CASE - LAST GROUP WRITE
@@ -234,6 +236,7 @@ void createPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 
 
 void printPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
+	/* print out information on all pipes - included for testing */
 	int i;
 	printf("----CREATED PIPES----\n");
 	printf("HIGHEST TOKEN GROUP INDEX: %d\n", lastGroupIndex);
@@ -252,12 +255,14 @@ void printPipes(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {
 }
 
 void handleTokenGroups(struct TokenGroupInfo* tokenGroups, int lastGroupIndex) {	
+	/* main function for forking, duping, and execing */
 	int i; int j;
 
 	for (i=0; i<=lastGroupIndex; i++) {
 		int p = fork();
 		if (p==0) {
 			// THIS IS THE CHILD
+			// dup2 only if the pipe is open
 			if (tokenGroups[i].fds[0] > -1) 
 				dup2(tokenGroups[i].fds[0], STDIN_FILENO);
 			if (tokenGroups[i].fds[1] > -1) 
@@ -296,28 +301,28 @@ int main() {
     // make room for 100 characters for each token user enters
     char* input = (char*)(malloc(102 * sizeof(char)));
 		memset(input, 0, 102 * sizeof(char));
-    //printf("$ "); //INCLUDED FOR TESTING
-    char* stillText = fgets(input, 102, stdin); 				// read line and store into input
+    // printf("$ "); //INCLUDED FOR TESTING
+		// store into input
+    char* stillText = fgets(input, 102, stdin);
     // Check for EOF token
 		if(!stillText)
 			exit(0);
 		
-		if(!strchr(input, '\n'))     //newline does not exist
-    	while(fgetc(stdin)!='\n'); //discard until newline
+		if(!strchr(input, '\n'))     // newline does not exist
+    	while(fgetc(stdin)!='\n'); // discard until newline
 		
 		input[strcspn(input, "\n")] = 0;
     
+		// For ensuring extra characters properly discarded
 		int len = (int) strlen(input);
 		if(len > 100)
 			memset(input, 0, 102 * sizeof(char));
-			
-		//printf("input length: %d\n", len); 
 		
 		// check for exit string
 		if(strcmp("exit", input)==0)
 			exit(0);
 
-		int* pids = (int*)(malloc(50*sizeof(int)));
+		//int* pids = (int*)(malloc(50*sizeof(int)));
 		char** tokens;
 		tokens = malloc(101 * (sizeof(char*)));
 		memset(tokens,0, 101 * sizeof(char*));
@@ -347,7 +352,7 @@ int main() {
 			destroyTokenGroups(tokenGroups, lastGroupIndex); // garbage collection
 		}	
 		free(input);
-		free(pids);
+		//free(pids);
 		free(tokens);
   }
   return 0;
