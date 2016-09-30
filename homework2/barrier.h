@@ -6,8 +6,11 @@
 class Barrier {
 
 	private:
+		// mutex
 		sem_t m;
+		// waiter
 		sem_t w;
+		// handshake
 		sem_t h;
 
 		int counter;
@@ -15,7 +18,6 @@ class Barrier {
 
 	public:
 		Barrier(int size);
-		int size();
 		void wait();
 };	
 #endif
