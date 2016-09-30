@@ -64,14 +64,17 @@ int isValidCombination(char** tokens, int numTokens) {
 	/* Check for valid individual tokens and valid combinations*/
 	int i;
 	for(i=0; i<numTokens; i++) {
+		/* Check if all individual tokens valid */
 		if(!(isValidWord(tokens[i]) || isOperator(tokens[i]))) {
 			return 0;
 		}
+		/* No tokens at beginning or end */
 		if(i==numTokens || i==0) {
 			if(isOperator(tokens[i])) {
 				return 0;
 			}
 		}
+		/* No operators right next to each other*/
 		if(i<numTokens-1) {
 			if(isOperator(tokens[i]) && isOperator(tokens[i+1]))
 				return 0;
@@ -292,7 +295,7 @@ int main() {
   while(1) {
     // make room for 100 characters for each token user enters
     char* input = (char*)(malloc(101 * sizeof(char))); 
-    printf("$ "); //INCLUDED FOR TESTING
+    //printf("$ "); //INCLUDED FOR TESTING
     fgets(input, 101, stdin); 				// read line and store into input
     input[strcspn(input, "\n")] = 0;	//
     
