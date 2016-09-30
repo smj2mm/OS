@@ -1,2 +1,40 @@
 0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+256
+256
+256
+256
+Usage: /bin/grep [OPTION]... PATTERN [FILE]...
+Try '/bin/grep --help' for more information.
+512
+256
+256
+Usage: /bin/grep [OPTION]... PATTERN [FILE]...
+Try '/bin/grep --help' for more information.
+512
+0
+0
+0
+0
+0
+/bin/cat: notReal.txt: No such file or directory
+256
+0
+0
+/bin/cat: notReal.txt: No such file or directory
 256

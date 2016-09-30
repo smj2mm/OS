@@ -1,0 +1,109 @@
+1:1:1:hudson
+2:2:5:weston
+3:3:6:anmes
+4:4:8:stuff
+5:5:9:lots of lines
+6:6:10:thats enough
+1:hudson
+5:weston
+6:anmes
+8:stuff
+9:lots of lines
+10:thats enough
+Makefile
+a.out
+errout.txt
+exit_codes
+homework1.c
+homework1.o
+inputCat.txt
+msh
+test.txt
+testOutput.txt
+testOutput2.txt
+testOutput3.txt
+testout.txt
+4:exit_codes
+8:msh
+9:test.txt
+10:testOutput.txt
+11:testOutput2.txt
+12:testOutput3.txt
+13:testout.txt
+4:exit_codes
+8:msh
+9:test.txt
+10:testOutput.txt
+11:testOutput2.txt
+12:testOutput3.txt
+13:testout.txt
+1:1:hudson
+2:5:weston
+3:6:anmes
+4:8:stuff
+5:9:lots of lines
+6:10:thats enough
+1:1:1:hudson
+2:2:5:weston
+3:3:6:anmes
+4:4:8:stuff
+5:5:9:lots of lines
+6:6:10:thats enough
+Makefile
+a.out
+errout.txt
+exit_codes
+homework1.c
+homework1.o
+inputCat.txt
+msh
+test.txt
+testOutput.txt
+testOutput2.txt
+testOutput3.txt
+testout.txt
+invalid input
+invalid input
+invalid input
+In (null)
+ Out testOut.txt
+invalid input 3
+invalid input
+In testOut.txt
+ Out (null)
+invalid input 3
+invalid input
+invalid input
+invalid input
+invalid input
+invalid input
+invalid input
+Makefile
+a.out
+errout.txt
+exit_codes
+homework1.c
+homework1.o
+inputCat.txt
+msh
+test.txt
+testOutput.txt
+testOutput2.txt
+testOutput3.txt
+testout.txt
+invalid input
+invalid input
+invalid input
+In (null)
+ Out testOut.txt
+invalid input 3
+invalid input
+In testOut.txt
+ Out (null)
+invalid input 3
+invalid input
+invalid input
+invalid input
+invalid input
+invalid input
+invalid input

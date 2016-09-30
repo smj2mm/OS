@@ -294,11 +294,25 @@ int main() {
 	
   while(1) {
     // make room for 100 characters for each token user enters
-    char* input = (char*)(malloc(101 * sizeof(char))); 
+    char* input = (char*)(malloc(102 * sizeof(char)));
+		memset(input, 0, 102 * sizeof(char));
     //printf("$ "); //INCLUDED FOR TESTING
-    fgets(input, 101, stdin); 				// read line and store into input
-    input[strcspn(input, "\n")] = 0;	//
+    char* stillText = fgets(input, 102, stdin); 				// read line and store into input
+    // Check for EOF token
+		if(!stillText)
+			exit(0);
+		
+		if(!strchr(input, '\n'))     //newline does not exist
+    	while(fgetc(stdin)!='\n'); //discard until newline
+		
+		input[strcspn(input, "\n")] = 0;
     
+		int len = (int) strlen(input);
+		if(len > 100)
+			memset(input, 0, 102 * sizeof(char));
+			
+		//printf("input length: %d\n", len); 
+		
 		// check for exit string
 		if(strcmp("exit", input)==0)
 			exit(0);
@@ -312,7 +326,7 @@ int main() {
 		int numTokens = 0;
 		createTokenArray(token, tokens, &numTokens);
 		
-		if(!isValidCombination(tokens, numTokens)) {
+		if(!isValidCombination(tokens, numTokens) || len > 100) {
 			printf("invalid input\n");
 		}
 		else if(strcmp("", input)==0) {
