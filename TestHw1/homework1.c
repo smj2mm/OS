@@ -322,7 +322,6 @@ int main() {
 		if(strcmp("exit", input)==0)
 			exit(0);
 
-		//int* pids = (int*)(malloc(50*sizeof(int)));
 		char** tokens;
 		tokens = malloc(101 * (sizeof(char*)));
 		memset(tokens,0, 101 * sizeof(char*));
@@ -352,7 +351,6 @@ int main() {
 			destroyTokenGroups(tokenGroups, lastGroupIndex); // garbage collection
 		}	
 		free(input);
-		//free(pids);
 		free(tokens);
   }
   return 0;
