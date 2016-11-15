@@ -4,6 +4,17 @@
 #include <fstream>
 #include <iostream>
 
+#include <stack>  // std::stack
+#include <vector>
+
+ 
+#define	READ_ONLY 		0x01
+#define HIDDEN 				0x02
+#define SYSTEM 				0x04
+#define VOLUME_LABEL 	0x08
+#define SUBDIRECTORY 	0x10
+#define ARCHIVE 			0x20
+
 using namespace std;
 
 typedef struct {
@@ -81,64 +92,90 @@ void printBootSector(Fat16BootSector* b) {
   cout << "boot_sector_signature: " << b->boot_sector_signature << "\n";	
 }
 
-void printDirEntry(Fat16Entry* r) {
-  cout << "filename: " << r->filename << "; size: " << sizeof(r->filename) << "\n";
-  cout << "ext: " << r->ext << "; size: " << sizeof(r->ext) << "\n";
-  cout << "attributes: " << r->attributes << "; size: " << sizeof(r->attributes) << "\n";
-  cout << "reserved: " << r->reserved << "; size: " << sizeof(r->reserved) << "\n";
-  cout << "modify_time: " << r->modify_time << "; size: " << sizeof(r->modify_time) << "\n";
-  cout << "modify_date: " << r->modify_date << "; size: " << sizeof(r->modify_date) << "\n";
-  cout << "starting_cluster: " << r->starting_cluster << "; size: " << sizeof(r->starting_cluster) << "\n";
-  cout << "file_size: " << r->file_size << "; size: " << sizeof(r->file_size) << "\n";	
+void createTokenArray(char* token, char** tokens, int* numTokens) {
+  int i = 0;
+  while(token != NULL) {
+		// create space, add token
+    tokens[i] = (char*) malloc(sizeof(token));
+    tokens[i] = token;
+    token = strtok(NULL, "/");
+		if(token!=NULL) {
+			*remove(token, token+strlen(token), '\n') = '\0';
+		}
+		i++;
+    // update number of tokens
+		*numTokens=i;
+  }
 }
 
-void printDir(Fat16Entry** dir, int dirSize) {
+bool checkEntry(Fat16Entry f) {
+  /*
+	0x01 Read-only
+  0x02 Hidden
+  0x04 System
+  0x08 Volume label
+  0x10 Subdirectory
+  0x20 Archive
+	*/
+	
+	if((f.attributes & HIDDEN) == HIDDEN) {
+		//cout << "hidden" << "\n";
+		return false;
+	}
+	if((f.attributes & SYSTEM) == SYSTEM) {
+		//cout << "system" << "\n";
+		return false;
+	}
+	return true;
+}
+
+void printDirEntry(Fat16Entry r) {
+  cout << "filename: " << r.filename << "; size: " << sizeof(r.filename) << "\n";
+  cout << "ext: " << r.ext << "; size: " << sizeof(r.ext) << "\n";
+  cout << "attributes: " << r.attributes << "; size: " << sizeof(r.attributes) << "\n";
+  cout << "reserved: " << r.reserved << "; size: " << sizeof(r.reserved) << "\n";
+  cout << "modify_time: " << r.modify_time << "; size: " << sizeof(r.modify_time) << "\n";
+  cout << "modify_date: " << r.modify_date << "; size: " << sizeof(r.modify_date) << "\n";
+  cout << "starting_cluster: " << r.starting_cluster << "; size: " << sizeof(r.starting_cluster) << "\n";
+  cout << "file_size: " << r.file_size << "; size: " << sizeof(r.file_size) << "\n";	
+}
+
+void printDir(Fat16Entry* dir, int dirSize) {
 	int i;
 	for(i=0; i<dirSize; i++) {
-		//cout << i << "\n";
-		if(strncmp((char*)(dir[i]->filename), "", 4) == 0) {
-			break;
+		//printDirEntry(dir[i]);
+		if(checkEntry(dir[i])) {
+		  printf ("%.8s\n", dir[i].filename);
+			//cout << dir[i].filename << "\n";
 		}
-		printDirEntry(dir[i]);
 	}
 }
 
-void createDir(int rLoc, FILE* fatFile, int dirSize, Fat16Entry** *directory) {
-	//Fat16Entry** directory = new Fat16Entry*[dirSize * sizeof(char)];
-	
-	char rootBuff[1000 * sizeof(char)];
-	//Fat16Entry* r = new Fat16Entry;
-	fseek(fatFile, rLoc, SEEK_SET);
-	fread(rootBuff, sizeof(Fat16Entry), 1, fatFile);
-	//r = (Fat16Entry*) rootBuff;
-	*(directory[0]) = (Fat16Entry*) rootBuff;
-
-	//*(directory[0]) = r;
-	printDirEntry(*(directory[0]));
-	int i = 1;
-
-	while(1) { 
-		cout << "---- DIR ----\n";
-		
-		char buff[1000 * sizeof(char)];
-		//Fat16Entry* entry = new Fat16Entry;
-		fseek(fatFile, 0, SEEK_CUR);
-		fread(buff, sizeof(Fat16Entry), 1, fatFile);
-		//entry = (Fat16Entry*) buff;
-		directory[0][i] = (Fat16Entry*) buff;
-
-		if(strncmp((char*)(directory[0][i]->filename), "", 4) ==0) {
+void getDirSize(Fat16Entry* dir, int* size) {
+	int i = 0;
+	while(1) {
+		//cout << i << "\n";
+		//cout << dir[i].filename;
+		if(strncmp((char*)(dir[i].filename), "", 4) ==0) {
+			*size = i;
 			break;
 		}
-		//directory[0][i] = entry;
-		cout << i << ": ";
-		//printDirEntry(entry);
-		cout << "READ BACK\n";
-		printDirEntry(directory[0][i]);
-		i++;
-		cout << "-------- \n\n";
 		//sleep(1);
+		i++;
 	}
+}
+
+Fat16Entry* readInDir(int dirLoc, FILE* fatFile) {
+	char buff[1000 * sizeof(Fat16Entry)];
+	Fat16Entry* dir = new Fat16Entry[1000];
+	fseek(fatFile, dirLoc, SEEK_SET);
+	fread(buff, 1000 * sizeof(Fat16Entry), 1, fatFile);
+	dir = (Fat16Entry*) buff;
+	int dirNumEntries;
+	
+	getDirSize(dir, &dirNumEntries);
+	//printDir(dir, dirNumEntries);
+	return dir;
 }
 
 int computeRootDirLocation(Fat16BootSector* b) {
@@ -147,6 +184,41 @@ int computeRootDirLocation(Fat16BootSector* b) {
 
 int computeDataLocation(Fat16BootSector* b) {
 	return (b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats) + sizeof(Fat16Entry)) * b->sector_size;
+}
+
+bool isDirectory(Fat16Entry f, FILE* fatFile) {
+	if((f.attributes & SUBDIRECTORY) == SUBDIRECTORY) {
+		//cout << "subdirectory" << "\n";
+		return true;
+	}
+	return false;
+}
+
+int getDirLocation(Fat16Entry f, FILE* fatFile, Fat16BootSector* b) {
+	if(f.starting_cluster == 0) {
+		// special case for root
+		return computeRootDirLocation(b);
+	}
+	int blocksToData = b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats) + sizeof(Fat16Entry);
+	return (((f.starting_cluster-2)*(b->sectors_per_cluster)) + blocksToData) * b->sector_size;
+	//int blocksToRootDir = b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats);
+	//return (((f.starting_cluster-2)*(b->sectors_per_cluster)) + blocksToRootDir) * b->sector_size;
+}
+
+int findDir(char* name, FILE* fatFile, Fat16Entry* dir, int dirSize, Fat16BootSector* b) {
+	// do ls and compare filenames with name
+	// if the name matches, check if it's a directory
+	int i;
+	for(i=0; i<dirSize; i++) {
+		//printDirEntry(dir[i]);
+		if(strncmp((char*)dir[i].filename, name, strlen(name)-1)==0) {
+			if(isDirectory(dir[i], fatFile)) {
+				//return dir[i].starting_cluster;
+				return getDirLocation(dir[i], fatFile, b);
+			}
+		}
+	}
+	return -1;
 }
 
 int main ( int argc, char *argv[] ) {
@@ -159,28 +231,39 @@ int main ( int argc, char *argv[] ) {
 	fread(bootBuff, sizeof(Fat16BootSector), 1, fatFile);
 	b = (Fat16BootSector*) bootBuff;
 	
-	printBootSector(b);
-	//cout << "root offset: " << computeRootDirLocation(b);
+	//printBootSector(b);
+	
 	int rootDirLoc = computeRootDirLocation(b);
 	int rootDirSize = b->root_dir_entries;
 	
-	cout << "Fat16Entry size: " << sizeof(Fat16Entry) << "\n";
+	//cout << "rootDirLoc: " << rootDirLoc << "\n";
 	
-	Fat16Entry** rootDirectory = new Fat16Entry*[rootDirSize * sizeof(char)];
-	int i;
-	for(i=0; i<rootDirSize; i++) {
-		rootDirectory[i] = new Fat16Entry;		
-	}
-	createDir(rootDirLoc, fatFile, rootDirSize, &rootDirectory);
-	printDir(rootDirectory, rootDirSize);
-	
-	int dataDirLoc = computeDataLocation(b);
-	int dirSize = b->root_dir_entries; // WRONG
-	Fat16Entry** dataStart = new Fat16Entry*[rootDirSize * sizeof(char)];
-	createDir(dataDirLoc, fatFile, dirSize, &dataStart);
+	char buff[512 * sizeof(Fat16Entry)];
+	Fat16Entry* rootDir = new Fat16Entry[512];
+	fseek(fatFile, rootDirLoc, SEEK_SET);
+	fread(buff, 512 * sizeof(Fat16Entry), 1, fatFile);
+	rootDir = (Fat16Entry*) buff;
+	int rootDirNumEntries;
 
-	//printBootSector(b);
-	//printDirEntry(r);
+	getDirSize(rootDir, &rootDirNumEntries);
+
+	//printDir(rootDir, rootDirNumEntries);
+
+
+	int dataDirLoc = computeDataLocation(b);
+	//int dirSize = b->root_dir_entries; // WRONG
+	
+	//cout << dataDirLoc << "\n\n";
+	Fat16Entry* dataStart = new Fat16Entry;
+	
+	dataStart = readInDir(dataDirLoc, fatFile);
+	int currentLocation = rootDirLoc;
+	Fat16Entry* currentDirectory = new Fat16Entry;
+	
+	currentDirectory = rootDir;
+	int dirSize = rootDirNumEntries;
+
+	//cout << "Here's where parent is: " << getDirLocation(dataStart[1], fatFile, b) << "\n";
 
 	while(1) {
 		/*
@@ -196,19 +279,45 @@ int main ( int argc, char *argv[] ) {
     memset(input, 0, 102 * sizeof(char));
     fgets(input, 101, stdin);
 		
-		cout << "input: " << input << "\n";
+		//cout << "input: " << input << "\n";
     // check for exit string
     if(strncmp("exit\n", input, 5)==0) {
 			exit(0);
 		}
-		cout << computeDataLocation(b) << "\n";
-		/* NEW CODE */
-		//fseek
-		//fread
+		
+		if(strncmp("ls", input, 2)==0) {
+			currentDirectory = readInDir(currentLocation, fatFile);
+			getDirSize(currentDirectory, &dirSize);
+			printDir(currentDirectory, dirSize);
+		}
 
-				
-		//cout << noPointer.sector_size << "\n";
-		//cout << b -> root_dir_entries << "\n";
+		if(strncmp("cd", input, 2)==0) {
+			if(strncmp((input + 3), "", 3)==0) {
+				currentLocation = rootDirLoc;
+				//cout << "current location: " << currentLocation << "\n";
+			}
+			else {
+			  char** tokens = new char*[101 * sizeof(char*)];
+			  char* token = strtok((input+3), "/");
+			  int numTokens;
+			  createTokenArray(token, tokens, &numTokens);
+				// First just cd into one
+				int dirLoc = findDir(input+3, fatFile, currentDirectory, dirSize, b);
+				if(dirLoc==-1) {
+					cout << "invalid directory\n";
+				}
+				else {
+					cout << "location: " << dirLoc << "\n";
+					currentLocation = dirLoc;
+					currentDirectory = readInDir(currentLocation, fatFile);
+				}
+			}
+		}
+		/*
+		if(strncmp("cd ", input, 3)==0) {
+
+		}*/
+		
 	}
 	return 0;
 }
