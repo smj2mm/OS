@@ -7,7 +7,6 @@
 
 #include <stack>  // std::stack
 #include <vector>
-
  
 #define	READ_ONLY 		0x01
 #define HIDDEN 				0x02
@@ -148,9 +147,10 @@ void printDir(Fat16Entry* dir) {
 			if((dir[i].attributes & SUBDIRECTORY) == SUBDIRECTORY) {
 				printf ("%.8s\n", dir[i].filename);
 			}
-			else
+			else {
 				printf ("%.8s.%.3s\n", dir[i].filename, dir[i].ext);
-			//cout << dir[i].filename << "\n";
+				//cout << dir[i].filename << "\n";
+			}
 		}
 		i++;
 	}
@@ -185,7 +185,7 @@ bool isDirectory(Fat16Entry f, FILE* fatFile) {
 	return false;
 }
 
-int getFileLocation(int starting_cluster, FILE* fatFile, Fat16BootSector* b) {
+unsigned int getFileLocation(int starting_cluster, FILE* fatFile, Fat16BootSector* b) {
 	if(starting_cluster == 0) {
 		// special case for root
 		return computeRootDirLocation(b);
@@ -243,7 +243,7 @@ int findDir(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {
 	return -1;
 }
 
-int findFileIndex(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {	
+int findFileIndex(char* name, char* ext, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {	
 	int i,j; char* currFilename = new char[8];
 	i=0;
 	while(dir[i].filename[0] != 0x00)	{
@@ -259,18 +259,28 @@ int findFileIndex(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b
 		//cout << currFilename << "\n" << name << "\n ---- \n";
 
 		if(strncmp(currFilename, name, strlen(name)-1)==0) {
-			//cout << "FOUND THIS: " << dir[i].filename << "\n";
-			//cout << "first fat sector location is: " << b->reserved_sectors * b->sector_size << "\n";
-			//cout << "getTableValue: " << getTableValue(b->sector_size, dir[i].starting_cluster, b->reserved_sectors, fatFile) << "\n";
-			//return getFileLocation(dir[i], fatFile, b);
-			//return dir[i];
-			return i;
+			if(strncmp((char*)dir[i].ext, ext, 3)==0) {
+				//cout << "FOUND THIS: " << dir[i].filename << "\n";
+				//cout << "first fat sector location is: " << b->reserved_sectors * b->sector_size << "\n";
+				//cout << "getTableValue: " << getTableValue(b->sector_size, dir[i].starting_cluster, b->reserved_sectors, fatFile) << "\n";
+				//return getFileLocation(dir[i], fatFile, b);
+				//return dir[i];
+				return i;
+			}
 		}
 		i++;
 	}
 	return -1;
 }
 
+char* getFilenameAndExt(char **filename) {
+  char *lastDot = strrchr(*filename, '.');
+  //if(!dot || dot == filename) return "";
+  if(lastDot != NULL)
+		*lastDot = '\0';
+	if(!lastDot || lastDot == *filename) return "";
+	return lastDot + 1;
+}
 
 void traceLinkedList(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, int systemFile) {
 	unsigned short nextFatLocation = getTableValue(b->sector_size, file.starting_cluster, b->reserved_sectors, fatFile);
@@ -282,20 +292,22 @@ void traceLinkedList(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, int sys
 }
 
 void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFile) {
-	unsigned short locationInBytes;
-
-	if(file.file_size < b->sector_size * b->sectors_per_cluster) {
+	unsigned int locationInBytes;
+	int cluster_size = b->sector_size * b->sectors_per_cluster;
+	cout << "File size: " << file.file_size << "\n";
+	if(file.file_size < cluster_size) {
 		//char* readBuff2[file.file_size];
 		cout << "small file. file size = " << file.file_size << "\n";
 		char* readBuff[file.file_size];
-
+		
 		locationInBytes = getFileLocation(file.starting_cluster, fatFile, b);
+		cout << "locationInBytes: " << locationInBytes << "\n";
 		fseek(fatFile, locationInBytes, SEEK_SET);
 		fread(readBuff, 1, file.file_size, fatFile);
 		fwrite(readBuff, 1, file.file_size, systemFile);
 	}
 	else {
-		int cluster_size = b->sector_size * b->sectors_per_cluster;
+		//int cluster_size = b->sector_size * b->sectors_per_cluster;
 		cout << "large file. cluster size: " << cluster_size << "\n";
 		cout << "occurances of cluster size: " << file.file_size / cluster_size << "\n";
 		cout << "    remaining: " << file.file_size % cluster_size << "\n";
@@ -314,20 +326,16 @@ void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFil
 				fwrite(readBuff1, 1, cluster_size, systemFile);
 			}
 			else {
-				cout << "last locationInBytes" << locationInBytes << "\n";
+				cout << "last locationInBytes: " << locationInBytes << "\n";
 				fseek(fatFile, locationInBytes, SEEK_SET);
 				fread(readBuff2, 1, cluster_size, fatFile);
 				fwrite(readBuff2, 1, cluster_size, systemFile);
 			}
-			//read(  int  handle,  void  *buffer,  int  nbyte );
-			//fseek(fatFile, locationInBytes, SEEK_SET);
-			//fread(readbuff1, 1, cluster_size, fatFile);
-			//fwrite(readbuff1, 1, cluster_size, systemFile);
-			// NEED SPECIAL CASE FOR LAST TIME
 		}
 	}
 }
 
+////////////////////////////
 /**   COMMAND HANDLERS   **/
 ////////////////////////////
 
@@ -347,7 +355,6 @@ void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 		for(i=0; i<numTokens; i++) {
 			cout << "attempting token: " << tokens[i] << "\n";
 			int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
-			//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
 			if(dirLoc==-1) {
 				cout << "invalid directory\n";
 				break;
@@ -422,7 +429,9 @@ void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory,
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-				int fileIndex = findFileIndex(tokens[i], fatFile, currentDirectory, b);
+				char* ext = getFilenameAndExt(&tokens[i]);
+				
+				int fileIndex = findFileIndex(tokens[i], ext, fatFile, currentDirectory, b);
 				cout << "starting cluster: " << currentDirectory[fileIndex].starting_cluster << "\n";
 				copyOut(fatFile, currentDirectory[fileIndex], b, systemFile);
 				//int fileLoc = traceLinkedList(tokens[i], fatFile, currentDirectory, b);
@@ -450,6 +459,7 @@ void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory,
 
 ////////////////////////////
 /** END COMMAND HANDLERS **/
+////////////////////////////
 
 int main ( int argc, char *argv[] ) {	
 	FILE * fatFile = fopen(argv[1], "rb");
@@ -511,8 +521,7 @@ int main ( int argc, char *argv[] ) {
 
 		else if(strncmp("cpout", input, 5)==0) {
 			handleCpout(input, currentLocation, currentDirectory, fatFile, b);
-    }
-		
+    }		
 	}
 	return 0;
 }
