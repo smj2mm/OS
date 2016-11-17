@@ -34,7 +34,6 @@ typedef struct {
   unsigned short modify_time;
   unsigned short modify_date;
   unsigned short starting_cluster;
-  //unsigned long file_size;
 	int32_t file_size;
 } __attribute((packed)) Fat16Entry;
 
@@ -278,7 +277,7 @@ char* getFilenameAndExt(char **filename) {
   //if(!dot || dot == filename) return "";
   if(lastDot != NULL)
 		*lastDot = '\0';
-	if(!lastDot || lastDot == *filename) return "";
+	//if(!lastDot || lastDot == *filename) return "";
 	return lastDot + 1;
 }
 
@@ -333,6 +332,30 @@ void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFil
 			}
 		}
 	}
+}
+
+Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, FILE* systemFile) {
+  // unsigned char filename[8];
+  // unsigned char ext[3];
+  // unsigned char attributes;
+  // unsigned char reserved[10];
+  // unsigned short modify_time;
+  // unsigned short modify_date;
+  // unsigned short starting_cluster;
+	// int32_t file_size;
+	Fat16Entry newEntry;
+	cout << "filename: " << filename << "\n";
+	strncpy((char*)(newEntry.filename), filename, 8);
+	cout << "ext: " << ext << "\n";
+	strncpy((char*)(newEntry.ext), ext, 3);
+	memset(&(newEntry.attributes), 0, 1);
+	memset(&(newEntry.reserved), 0, 10);
+	memset(&(newEntry.modify_time), 0, sizeof(unsigned short));
+	memset(&(newEntry.modify_date), 0, sizeof(unsigned short));
+	newEntry.file_size = fseek(fatFile, 0, SEEK_END);
+	
+	printDirEntry(newEntry);
+	return newEntry;
 }
 
 ////////////////////////////
@@ -430,6 +453,7 @@ void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory,
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
 				char* ext = getFilenameAndExt(&tokens[i]);
+				//createFat16Entry(tokens[i], ext, fatFile, systemFile);
 				
 				int fileIndex = findFileIndex(tokens[i], ext, fatFile, currentDirectory, b);
 				cout << "starting cluster: " << currentDirectory[fileIndex].starting_cluster << "\n";
@@ -456,6 +480,64 @@ void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory,
 		currentDirectory = dirToRestore;
 	}
 }
+
+void handleCpin(char* input, int currentLocation, Fat16Entry* currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+	if(strncmp((input + 6), "", 3)==0) {
+		cout << "must request file for copyout\n";
+		//cout << "current location: " << currentLocation << "\n";
+	}
+	else {
+	  char** args = new char*[3 * sizeof(char*)];
+	  char* arg1 = strtok(input, " ");
+	  int numArgs;
+	  createTokenArray(arg1, args, &numArgs, " ");
+	 
+		//int systemFile = open(args[2], O_WRONLY | O_CREAT | O_TRUNC, 00664);
+		FILE* systemFile = fopen(args[1], "rb");
+
+		char** tokens = new char*[101 * sizeof(char*)];
+	  char* token = strtok((args[2]), "/");
+	  int numTokens;
+	  createTokenArray(token, tokens, &numTokens, "/");
+		int i;
+		
+		int locToRestore = currentLocation;
+		Fat16Entry* dirToRestore = new Fat16Entry;
+		dirToRestore = currentDirectory;
+
+		for(i=0; i<numTokens; i++) {
+			if(i==numTokens-1) {
+				cout << tokens[i] << "\n";	
+				char* ext = getFilenameAndExt(&tokens[i]);
+				
+				createFat16Entry(tokens[i], ext, fatFile, systemFile);
+				//int fileIndex = findFileIndex(tokens[i], ext, fatFile, currentDirectory, b);
+				//cout << "starting cluster: " << currentDirectory[fileIndex].starting_cluster << "\n";
+				//copyIn(fatFile, currentDirectory[fileIndex], b, systemFile);
+				
+				//int fileLoc = traceLinkedList(tokens[i], fatFile, currentDirectory, b);
+				//cout << "file loc is: " << fileLoc << "\n";
+			}
+			else {
+				int dirLoc = findDir(tokens[i], fatFile, currentDirectory, b);
+				//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
+				if(dirLoc==-1) {
+					cout << "invalid directory\n";
+					break;
+				}
+				else {
+					//cout << "i: " << i << "\n";
+					//cout << "location: " << dirLoc << "\n";
+					currentLocation = dirLoc;
+					currentDirectory = readInDir(currentLocation, fatFile);
+				}
+			}	
+		}
+		currentLocation = locToRestore;
+		currentDirectory = dirToRestore;
+	}
+}
+
 
 ////////////////////////////
 /** END COMMAND HANDLERS **/
@@ -521,7 +603,11 @@ int main ( int argc, char *argv[] ) {
 
 		else if(strncmp("cpout", input, 5)==0) {
 			handleCpout(input, currentLocation, currentDirectory, fatFile, b);
-    }		
+    }
+
+		else if(strncmp("cpin", input, 4)==0) {
+			handleCpin(input, currentLocation, currentDirectory, fatFile, b);
+		}
 	}
 	return 0;
 }
