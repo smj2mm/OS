@@ -4,6 +4,9 @@
 #include <fstream>
 #include <iostream>
 #include <fcntl.h>
+#include <string>
+#include <cstring>
+#include <algorithm> 
 
 #include <stack>  // std::stack
 #include <vector>
