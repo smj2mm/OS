@@ -393,28 +393,100 @@ unsigned int findEmptySpotDir(FILE* fatFile, unsigned int currentLocation) {
 	//fwrite(newEntry, 1, sizeof(Fat16Entry), fatFile);
 }
 
-
-void writeToFileAndData(unsigned short fat_table[], int firstFatLoc, FILE* fatFile, Fat16BootSector* b, unsigned int newDirLoc, Fat16Entry* newEntry, FILE* systemFile) {
-	int prevFatTableLoc = firstFatLoc;
-	unsigned int dataLoc = getFileLocation(prevFatTableLoc, fatFile, b);
-	cout << "new data location: " << dataLoc << endl;
+void writeNewDir(FILE* fatFile, unsigned int newDirLoc, Fat16Entry* newEntry) {
 	cout << "new dir location: " << newDirLoc << endl;
 	cout << "filesize: " << newEntry->file_size << endl;
-	cout << "next cluster: " << newEntry->starting_cluster << "\n\n";
-
+	cout << "starting cluster: " << newEntry->starting_cluster << "\n\n";
 	fseek(fatFile, newDirLoc, SEEK_SET);
 	fwrite(newEntry, 1, sizeof(Fat16Entry), fatFile);
+}
+
+void writeToData(int starting_cluster, FILE* fatFile, Fat16BootSector* b, FILE* systemFile, unsigned int writeBuffSize, unsigned int systemIndex) {
+	int cluster_size = b->sector_size * b->sectors_per_cluster;
+	unsigned int dataLoc = getFileLocation(starting_cluster, fatFile, b);
+	cout << "writing data at location: " << dataLoc << endl;
 	
-	char writeBuff[newEntry->file_size];
+	char writeBuff[writeBuffSize];
+	cout << "write buffer size: " << writeBuffSize << endl;
+	
+	cout << "writing from system file locaiton: " << systemIndex * cluster_size << endl;
+	fseek(systemFile, (systemIndex * cluster_size), SEEK_SET);
+	fread(writeBuff, sizeof(char), writeBuffSize, systemFile);	
 	fseek(fatFile, dataLoc, SEEK_SET);
-	fseek(systemFile, 0, SEEK_SET);
-	fread(writeBuff, sizeof(char), (newEntry->file_size), systemFile);
-	/*
-	int i;
-	for(i=0; i<newEntry->file_size; i++)
-		writeBuff[i] = 'a';
-	*/
-	fwrite(writeBuff, sizeof(char), (newEntry->file_size), fatFile);
+	fwrite(writeBuff, sizeof(char), writeBuffSize, fatFile);
+}
+
+void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, int* currentLocation) {
+	char* ext = getFilenameAndExt(&newName);	
+	int cluster_size = b->sector_size * b->sectors_per_cluster;
+	unsigned int first_fat_location = b->reserved_sectors * b->sector_size;
+	
+	unsigned short fat_table[b->fat_size_sectors * b->sector_size];
+	fseek(fatFile, first_fat_location, SEEK_SET);
+	fread(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
+	
+	fseek(systemFile, 0L, SEEK_END);
+	unsigned int systemFileSize = ftell(systemFile);
+
+	int newStartingCluster = findOpenFatLoc(fat_table);
+	Fat16Entry newFile = createFat16Entry(newName, ext, fatFile, systemFileSize, (unsigned short) newStartingCluster);
+	unsigned int newDirLoc = findEmptySpotDir(fatFile, *currentLocation); // NEED TO CHANGE TO CORRECT PATH
+	writeNewDir(fatFile, newDirLoc, &newFile);
+
+	int i=-1;
+	int prevFatIndex;
+	int fatUpdateIndex;
+	
+	// -1 is included to ensure that last part is done outside of while loop for file exactly of power-of-two size
+	for(i=0; i<((systemFileSize-1)/cluster_size); i++) {
+		newStartingCluster = findOpenFatLoc(fat_table);
+		// placeholder
+		fat_table[newStartingCluster] = 1;
+		prevFatIndex = fatUpdateIndex;
+		fatUpdateIndex = newStartingCluster;
+		//cout << "update location: " << (first_fat_location + newStartingCluster * sizeof(short)) << endl;
+  	if(i>0) {
+			// seek to previously modified FAT location and write next (now current) location into it
+			//fseek(fatFile, prevFatLoc, SEEK_SET);
+			//fwrite(&fatUpdateLoc, 1, 1, fatFile);
+			cout << "fat_table[" << prevFatIndex << "] = " << fatUpdateIndex << endl;
+			fat_table[prevFatIndex] = fatUpdateIndex;
+		}
+		// NEED TO CHECK FOR CASE WHERE FILE ALREADY EXISTS
+		writeToData(newStartingCluster, fatFile, b, systemFile, cluster_size, i);
+	}
+	
+	newStartingCluster = findOpenFatLoc(fat_table);
+	
+	prevFatIndex = fatUpdateIndex;
+	fatUpdateIndex = newStartingCluster;
+  if(systemFileSize > cluster_size) { 
+		// if other FAT locations were used, seek to previously modified FAT location and write next (now current) location into it
+		//fseek(fatFile, prevFatLoc, SEEK_SET);
+		//fwrite(&fatUpdateLoc, 1, 1, fatFile);
+		fat_table[prevFatIndex] = fatUpdateIndex;
+		cout << "fat_table[" << prevFatIndex << "] = " << fatUpdateIndex << endl;
+		// write entire fat out
+		fseek(fatFile, first_fat_location, SEEK_SET);
+		fwrite(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
+	}
+
+	unsigned int fatUpdateLoc = first_fat_location + newStartingCluster * sizeof(short);
+  cout << "last FAT location to update: " << fatUpdateLoc << endl;
+	// signal that this is last cluster
+	unsigned short end = 0xFFFF;
+	fseek(fatFile, fatUpdateLoc, SEEK_SET);
+	fwrite(&end, sizeof(short), 1, fatFile);
+
+	cout << "i before last copy = " << i << endl;
+	// NEED TO CHECK FOR CASE WHERE FILE ALREADY EXISTS
+	if(systemFileSize%cluster_size == 0) {
+		writeToData(newStartingCluster, fatFile, b, systemFile, cluster_size, i);
+	}
+	else {
+		cout << "extra stuff of size: " << systemFileSize % cluster_size << endl;
+		writeToData(newStartingCluster, fatFile, b, systemFile, (systemFileSize % cluster_size), i);
+	}
 }
 
 ////////////////////////////
@@ -591,30 +663,9 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-				char* ext = getFilenameAndExt(&tokens[i]);
-				
-				unsigned int first_fat_location = b->reserved_sectors * b->sector_size;
-				
-				unsigned short fat_table[b->fat_size_sectors * b->sector_size];
-				fseek(fatFile, first_fat_location, SEEK_SET);
-				fread(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
-				
-				fseek(systemFile, 0L, SEEK_END);
-				unsigned int systemFileSize = ftell(systemFile);
-				
-				int newStartingCluster = findOpenFatLoc(fat_table);
-				Fat16Entry newFile = createFat16Entry(tokens[i], ext, fatFile, systemFileSize, (unsigned short) newStartingCluster);
-				
-				int fatUpdateLoc = first_fat_location + newStartingCluster * sizeof(short);
-				cout << "update location: " << fatUpdateLoc << endl;
 
-				fseek(fatFile, fatUpdateLoc, SEEK_SET);
-				unsigned short end = 0xFFFF;
-				fwrite(&end, 1, 1, fatFile);
+				copyIn(tokens[i], b, fatFile, systemFile, currentLocation);
 				
-				// NEED TO CHECK FOR CASE WHERE FILE ALREADY EXISTS
-				unsigned int newDirLoc = findEmptySpotDir(fatFile, *currentLocation); // NEED TO CHANGE TO CORRECT PATH
-				writeToFileAndData(fat_table, newStartingCluster, fatFile, b, newDirLoc, &newFile, systemFile);
 				//copyIn(fatFile, currentDirectory[fileIndex], b, systemFile);
 			}
 			else {
