@@ -362,7 +362,7 @@ Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, FILE* syst
 	memset(&(newEntry.modify_date), 0, sizeof(unsigned short));
 	fseek(systemFile, 0, SEEK_END);
 	newEntry.starting_cluster = 65535;
-	newEntry.file_size = ftell(fatFile);
+	newEntry.file_size = ftell(systemFile);
 	cout << "THIS FILESIZE IS: " << newEntry.file_size << "\n";
 	printDirEntry(newEntry);
 	return newEntry;
