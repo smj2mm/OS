@@ -266,6 +266,7 @@ int findFileIndex(char* name, char* ext, FILE* fatFile, Fat16Entry* dir, Fat16Bo
 		//cout << currFilename << "\n" << name << "\n ---- \n";
 
 		if(strncmp(currFilename, name, strlen(name)-1)==0) {
+			//cout << "made it part way\n";
 			if(strncmp((char*)dir[i].ext, ext, 3)==0) {
 				//cout << "FOUND THIS: " << dir[i].filename << "\n";
 				//cout << "first fat sector location is: " << b->reserved_sectors * b->sector_size << "\n";
@@ -342,7 +343,16 @@ void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFil
 	}
 }
 
-Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, FILE* systemFile) {
+unsigned int findOpenFatLoc(unsigned short* fat_table) {
+	int j=0;
+	while(fat_table[j] != 0) {
+		//cout << "-- " << fat_table[i] << "\n";
+		j++;
+	}
+	return j;
+}
+
+Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, unsigned int file_size, unsigned short startingCluster) {
   // unsigned char filename[8];
   // unsigned char ext[3];
   // unsigned char attributes;
@@ -350,7 +360,7 @@ Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, FILE* syst
   // unsigned short modify_time;
   // unsigned short modify_date;
   // unsigned short starting_cluster;
-	// int32_t file_size;
+	// int32_t file_size; 
 	Fat16Entry newEntry;
 	cout << "filename: " << filename << "\n";
 	strncpy((char*)(newEntry.filename), filename, 8);
@@ -380,6 +390,7 @@ unsigned int findEmptySpotDir(FILE* fatFile, unsigned int currentLocation) {
 		fread(checker, 2, 1, fatFile);
 		i++;
 	}
+	//fwrite(*i, sizeof(unsigned short), 1, fatFile);
 	unsigned int openLoc = ftell(fatFile)-2;
 	return openLoc;
 	//cout << "location: " << openLoc << endl;
@@ -398,10 +409,16 @@ void writeToFileAndData(unsigned short fat_table[], int firstFatLoc, FILE* fatFi
 	fseek(fatFile, newDirLoc, SEEK_SET);
 	fwrite(newEntry, 1, sizeof(Fat16Entry), fatFile);
 	
-	char* writeBuff[newEntry->file_size];
-	fseek(fatFile, dataLoc, SEEK_SET); 
-	fread(writeBuff, 1, (newEntry->file_size), systemFile);
-	fwrite(writeBuff, 1, (newEntry->file_size), fatFile);
+	char writeBuff[newEntry->file_size];
+	fseek(fatFile, dataLoc, SEEK_SET);
+	fseek(systemFile, 0, SEEK_SET);
+	fread(writeBuff, sizeof(char), (newEntry->file_size), systemFile);
+	/*
+	int i;
+	for(i=0; i<newEntry->file_size; i++)
+		writeBuff[i] = 'a';
+	*/
+	fwrite(writeBuff, sizeof(char), (newEntry->file_size), fatFile);
 }
 
 ////////////////////////////
@@ -493,7 +510,8 @@ void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 	}
 }
 
-void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+	*currentDirectory = readInDir(*currentLocation, fatFile);
 	if(strncmp((input + 6), "", 3)==0) {
 		cout << "must request file for copyout\n";
 		//cout << "current location: " << currentLocation << "\n";
@@ -511,25 +529,24 @@ void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory,
 	  char* token = strtok((input+6), "/");
 	  int numTokens;
 	  createTokenArray(token, tokens, &numTokens, "/");
-		int i;
 		
-		int locToRestore = currentLocation;
+		int locToRestore = *currentLocation;
 		Fat16Entry* dirToRestore = new Fat16Entry;
-		dirToRestore = currentDirectory;
+		dirToRestore = *currentDirectory;
 
+		int i;
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
 				char* ext = getFilenameAndExt(&tokens[i]);
 				//createFat16Entry(tokens[i], ext, fatFile, systemFile);
-				
-				int fileIndex = findFileIndex(tokens[i], ext, fatFile, currentDirectory, b);
-				cout << "starting cluster: " << currentDirectory[fileIndex].starting_cluster << "\n";
-				copyOut(fatFile, currentDirectory[fileIndex], b, systemFile);
+					
+				int fileIndex = findFileIndex(tokens[i], ext, fatFile, *currentDirectory, b);
+				copyOut(fatFile, (*currentDirectory)[fileIndex], b, systemFile);
 				//int fileLoc = traceLinkedList(tokens[i], fatFile, currentDirectory, b);
 				//cout << "file loc is: " << fileLoc << "\n";
 			}
 			else {
-				int dirLoc = findDir(tokens[i], fatFile, currentDirectory, b);
+				int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 				//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
 				if(dirLoc==-1) {
 					cout << "invalid directory\n";
@@ -538,18 +555,19 @@ void handleCpout(char* input, int currentLocation, Fat16Entry* currentDirectory,
 				else {
 					//cout << "i: " << i << "\n";
 					//cout << "location: " << dirLoc << "\n";
-					currentLocation = dirLoc;
-					currentDirectory = readInDir(currentLocation, fatFile);
+					*currentLocation = dirLoc;
+					*currentDirectory = readInDir(*currentLocation, fatFile);
 				}
 			}	
 		}
 		fclose(systemFile);
-		currentLocation = locToRestore;
-		currentDirectory = dirToRestore;
+		*currentLocation = locToRestore;
+		*currentDirectory = dirToRestore;
 	}
 }
 
-void handleCpin(char* input, int currentLocation, Fat16Entry* currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+
+void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
 	if(strncmp((input + 6), "", 3)==0) {
 		cout << "must request file for copyout\n";
 		//cout << "current location: " << currentLocation << "\n";
@@ -561,7 +579,7 @@ void handleCpin(char* input, int currentLocation, Fat16Entry* currentDirectory, 
 	  createTokenArray(arg1, args, &numArgs, " ");
 	 
 		//int systemFile = open(args[2], O_WRONLY | O_CREAT | O_TRUNC, 00664);
-		FILE* systemFile = fopen(args[1], "rb");
+		FILE* systemFile = fopen(args[1], "r+b");
 		if(systemFile == NULL)
 			cout << "AHHH!! ERROR!\n";
 
@@ -571,34 +589,40 @@ void handleCpin(char* input, int currentLocation, Fat16Entry* currentDirectory, 
 	  createTokenArray(token, tokens, &numTokens, "/");
 		int i;
 		
-		int locToRestore = currentLocation;
+		int locToRestore = *currentLocation;
 		Fat16Entry* dirToRestore = new Fat16Entry;
-		dirToRestore = currentDirectory;
+		dirToRestore = *currentDirectory;
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-				cout << tokens[i] << "\n";	
 				char* ext = getFilenameAndExt(&tokens[i]);
 				
-				Fat16Entry newFile = createFat16Entry(tokens[i], ext, fatFile, systemFile);
 				unsigned int first_fat_location = b->reserved_sectors * b->sector_size;
-
+				
 				unsigned short fat_table[b->fat_size_sectors * b->sector_size];
 				fseek(fatFile, first_fat_location, SEEK_SET);
 				fread(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
-				int i=0;
-				while(fat_table[i] != 0) {
-					//cout << "-- " << fat_table[i] << "\n";
-					i++;
-				}
-				int fatTableLoc = i;
+				
+				fseek(systemFile, 0L, SEEK_END);
+				unsigned int systemFileSize = ftell(systemFile);
+				
+				int newStartingCluster = findOpenFatLoc(fat_table);
+				Fat16Entry newFile = createFat16Entry(tokens[i], ext, fatFile, systemFileSize, (unsigned short) newStartingCluster);
+				
+				int fatUpdateLoc = first_fat_location + newStartingCluster * sizeof(short);
+				cout << "update location: " << fatUpdateLoc << endl;
+
+				fseek(fatFile, fatUpdateLoc, SEEK_SET);
+				unsigned short end = 0xFFFF;
+				fwrite(&end, 1, 1, fatFile);
+				
 				// NEED TO CHECK FOR CASE WHERE FILE ALREADY EXISTS
-				unsigned int newDirLoc = findEmptySpotDir(fatFile, currentLocation); // NEED TO CHANGE TO CORRECT PATH
-				writeToFileAndData(fat_table, fatTableLoc, fatFile, b, newDirLoc, &newFile, systemFile);
+				unsigned int newDirLoc = findEmptySpotDir(fatFile, *currentLocation); // NEED TO CHANGE TO CORRECT PATH
+				writeToFileAndData(fat_table, newStartingCluster, fatFile, b, newDirLoc, &newFile, systemFile);
 				//copyIn(fatFile, currentDirectory[fileIndex], b, systemFile);
 			}
 			else {
-				int dirLoc = findDir(tokens[i], fatFile, currentDirectory, b);
+				int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 				//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
 				if(dirLoc==-1) {
 					cout << "invalid directory\n";
@@ -607,14 +631,14 @@ void handleCpin(char* input, int currentLocation, Fat16Entry* currentDirectory, 
 				else {
 					//cout << "i: " << i << "\n";
 					//cout << "location: " << dirLoc << "\n";
-					currentLocation = dirLoc;
-					currentDirectory = readInDir(currentLocation, fatFile);
+					*currentLocation = dirLoc;
+					*currentDirectory = readInDir(*currentLocation, fatFile);
 				}
 			}	
 		}
 		fclose(systemFile);
-		currentLocation = locToRestore;
-		currentDirectory = dirToRestore;
+		*currentLocation = locToRestore;
+		*currentDirectory = dirToRestore;
 	}
 }
 
@@ -686,11 +710,11 @@ int main ( int argc, char *argv[] ) {
 		}
 
 		else if(strncmp("cpout", input, 5)==0) {
-			handleCpout(input, currentLocation, currentDirectory, fatFile, b);
+			handleCpout(input, &currentLocation, &currentDirectory, fatFile, b);
     }
 
 		else if(strncmp("cpin", input, 4)==0) {
-			handleCpin(input, currentLocation, currentDirectory, fatFile, b);
+			handleCpin(input, &currentLocation, &currentDirectory, fatFile, b);
 		}
 	}
 	return 0;

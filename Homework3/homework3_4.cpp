@@ -296,10 +296,10 @@ char* getFilenameAndExt(char **filename) {
 
 void traceLinkedList(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, int systemFile) {
 	unsigned short nextFatLocation = getTableValue(b->sector_size, file.starting_cluster, b->reserved_sectors, fatFile);
-	cout << "nextFatLocation: " << nextFatLocation << "\n";
+	//cout << "nextFatLocation: " << nextFatLocation << "\n";
 	while(nextFatLocation < 0xFFF8) {
 		nextFatLocation = getTableValue(b->sector_size, nextFatLocation, b->reserved_sectors, fatFile);
-		cout << "nextFatLocation: " << nextFatLocation << "\n";
+		//cout << "nextFatLocation: " << nextFatLocation << "\n";
 	}
 }
 
@@ -343,6 +343,24 @@ void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFil
 				fread(readBuff2, 1, cluster_size, fatFile);
 				fwrite(readBuff2, 1, cluster_size, systemFile);
 			}
+		}
+	}
+}
+
+void makeIntoEight(char* filename, char* newFileName) {
+	
+	int i;
+	bool stillLetters = true;
+
+	cout << "here" << endl;
+	for(i=0; i<8; i++) {
+		cout << "here " << i << endl;
+		if((filename[i] != '\0') & (stillLetters)) {
+			newFileName[i] = filename[i];
+		}
+		else {
+			newFileName[i] = ' ';
+			stillLetters = false;
 		}
 	}
 }
@@ -424,7 +442,10 @@ void writeToData(int starting_cluster, FILE* fatFile, Fat16BootSector* b, FILE* 
 }
 
 void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, int* currentLocation) {
-	char* ext = getFilenameAndExt(&newName);	
+	char* ext = getFilenameAndExt(&newName);
+	char resizedFileName[8];
+	makeIntoEight(newName, resizedFileName);
+
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
 	unsigned int first_fat_location = b->reserved_sectors * b->sector_size;
 	
@@ -469,8 +490,6 @@ void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, 
 	fatUpdateIndex = newStartingCluster;
   if(systemFileSize > cluster_size) { 
 		// if other FAT locations were used, seek to previously modified FAT location and write next (now current) location into it
-		//fseek(fatFile, prevFatLoc, SEEK_SET);
-		//fwrite(&fatUpdateLoc, 1, 1, fatFile);
 		fat_table[prevFatIndex] = fatUpdateIndex;
 		cout << "fat_table[" << prevFatIndex << "] = " << fatUpdateIndex << endl;
 		// write entire fat out
@@ -670,7 +689,6 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-
 				copyIn(tokens[i], b, fatFile, systemFile, currentLocation);
 				
 				//copyIn(fatFile, currentDirectory[fileIndex], b, systemFile);

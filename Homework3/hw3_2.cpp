@@ -11,10 +11,11 @@
 #include <fstream>
 #include <iostream>
 #include <fcntl.h>
-
+#include <string.h>
 #include <stack>  // std::stack
-#include <vector>
- 
+#include <algorithm>
+
+// Macros for bitflags on attributes of a Fat16Entry
 #define	READ_ONLY 		0x01
 #define HIDDEN 				0x02
 #define SYSTEM 				0x04
@@ -25,16 +26,8 @@
 using namespace std;
 
 typedef struct {
-  unsigned char first_byte;
-  unsigned char start_chs[3];
-  unsigned char partition_type;
-  unsigned char end_chs[3];
-  unsigned int start_sector;
-  unsigned int length_sectors;
-} __attribute((packed)) PartitionTable;
-
-typedef struct {
-  unsigned char filename[8];
+  // Stores information about files in directories on the file system
+	unsigned char filename[8];
   unsigned char ext[3];
   unsigned char attributes;
   unsigned char reserved[10];
@@ -45,9 +38,10 @@ typedef struct {
 } __attribute((packed)) Fat16Entry;
 
 typedef struct {
+	// Stores information about the information in the boot sector of the file system
   unsigned char jmp[3];
   char oem[8];
-  unsigned short sector_size; // 2 bytes
+  unsigned short sector_size;
   unsigned char sectors_per_cluster;
   unsigned short reserved_sectors;
   unsigned char number_of_fats;
@@ -73,6 +67,7 @@ typedef struct {
 
 
 void printBootSector(Fat16BootSector* b) {
+	// Printing the boot sector - used in testing
   cout << "jmp: " << b->jmp << "\n";
   cout << "oem: " << b->oem << "\n";
   cout << "sector_size: " << b->sector_size << "\n"; // 2 bytes
@@ -99,18 +94,20 @@ void printBootSector(Fat16BootSector* b) {
 }
 
 void createTokenArray(char* token, char** tokens, int* numTokens, const char delimiter[2]) {
-  int i = 0;
+  // tokenize a string based on the delimiter object
+	int i = 0;
   while(token != NULL) {
 		// create space, add token
     tokens[i] = (char*) malloc(sizeof(token));
     tokens[i] = token;
-    //token = strtok(NULL, "/");
+    // tokenize based on the passed in delimiter
 		token = strtok(NULL, delimiter);
+		// check for null token
 		if(token!=NULL) {
+			// remove newline character if it is present
 			char* endOfToken = token+strlen(token)-1;
 			if(strncmp(endOfToken,"\n",1)==0) {
 				*remove(token, endOfToken, '\n') = '\0';
-				//cout << "token with newline removed: "<< token << "\n";
 			}
 		}
 		i++;
@@ -120,12 +117,12 @@ void createTokenArray(char* token, char** tokens, int* numTokens, const char del
 }
 
 bool checkEntry(Fat16Entry f) {
+	// check whether a given directory entry is printable in LS. 
+	// This will return true unless the file is hidden, is a system file, or is a volume
 	if((f.attributes & HIDDEN) == HIDDEN) {
-		//cout << "hidden" << "\n";
 		return false;
 	}
 	if((f.attributes & SYSTEM) == SYSTEM) {
-		//cout << "system" << "\n";
 		return false;
 	}
 	if((f.attributes & VOLUME_LABEL) == VOLUME_LABEL) {
@@ -135,6 +132,7 @@ bool checkEntry(Fat16Entry f) {
 }
 
 void printDirEntry(Fat16Entry r) {
+	// Printing the obects held in a directory entry; this was included for testing
   cout << "filename: " << r.filename << "; size: " << sizeof(r.filename) << "\n";
   cout << "ext: " << r.ext << "; size: " << sizeof(r.ext) << "\n";
   cout << "attributes: " << r.attributes << "; size: " << sizeof(r.attributes) << "\n";
@@ -146,16 +144,19 @@ void printDirEntry(Fat16Entry r) {
 }
 
 void printDir(Fat16Entry* dir) {
+	// Print out items in directory (for ls)
 	int i=0;
+	// while the filename is not empty
 	while(dir[i].filename[0] != 0x00) {
-		//printDirEntry(dir[i]);
+		// if the directory fits the criteria for printing out
 		if(checkEntry(dir[i])) {
+			// if it's a subdirectory, only print the name
 			if((dir[i].attributes & SUBDIRECTORY) == SUBDIRECTORY) {
 				printf ("%.8s\n", dir[i].filename);
 			}
 			else {
+				// if it's not a subdirectory, print the filename and extension
 				printf ("%.8s.%.3s\n", dir[i].filename, dir[i].ext);
-				//cout << dir[i].filename << "\n";
 			}
 		}
 		i++;
@@ -163,69 +164,77 @@ void printDir(Fat16Entry* dir) {
 }
 
 Fat16Entry* readInDir(int dirLoc, FILE* fatFile) {
+	/* create a new Fat16Entry by reading from the FAT Volume at a particular location into a buffer */
 	char buff[1000 * sizeof(Fat16Entry)];
+	// create array of Fat16 entries
 	Fat16Entry* dir = new Fat16Entry[1000];
+	// seek to the directory location in FAT volume and read into the buffer
 	fseek(fatFile, dirLoc, SEEK_SET);
 	fread(buff, 1000 * sizeof(Fat16Entry), 1, fatFile);
+	// cast the buffer and set it as the new directory
 	dir = (Fat16Entry*) buff;
-	int dirNumEntries;
 	
-	//getDirSize(dir, &dirNumEntries);
-	//printDir(dir, dirNumEntries);
 	return dir;
 }
 
 int computeRootDirLocation(Fat16BootSector* b) {
+	/* computes the location of the root directory based on information in the boot sector*/
 	return (b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats)) * b->sector_size;
 }
 
 int computeDataLocation(Fat16BootSector* b) {
+	/* computes the location of the beginning of the data region based on information in the boot sector*/
 	return (b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats) + sizeof(Fat16Entry)) * b->sector_size;
 }
 
 bool isDirectory(Fat16Entry f, FILE* fatFile) {
+	/* returns true only if a given file is a subdirectory */
 	if((f.attributes & SUBDIRECTORY) == SUBDIRECTORY) {
-		//cout << "subdirectory" << "\n";
 		return true;
 	}
 	return false;
 }
 
 unsigned int getFileLocation(int starting_cluster, FILE* fatFile, Fat16BootSector* b) {
-	// Given starting cluster, finds location in data region
+	/* Given starting cluster, finds location in data region */
 	if(starting_cluster == 0) {
 		// special case for root
 		return computeRootDirLocation(b);
 	}
+	// compute hex file location based off of information from the boot sector and the starting cluster
 	int blocksToData = b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats) + sizeof(Fat16Entry);
 	return (((starting_cluster-2)*(b->sectors_per_cluster)) + blocksToData) * b->sector_size;
-	//int blocksToRootDir = b->reserved_sectors + (b->fat_size_sectors * b->number_of_fats);
-	//return (((f.starting_cluster-2)*(b->sectors_per_cluster)) + blocksToRootDir) * b->sector_size;
 }
 
 unsigned short getTableValue(int sector_size, int active_cluster, int first_fat_sector, FILE* fatFile) {
+	/* get location of next location in FAT in chain */
+	// create char array to hold linked data from the FAT 
 	unsigned char FAT_table[sector_size * sizeof(Fat16Entry)];
   memset(FAT_table, 0, sector_size * sizeof(char));
-
+	
+	// calculate offset into the table based off of active cluster and the first cluster in the FAT
 	unsigned int fat_offset = active_cluster * 2;
 	unsigned int fat_sector = first_fat_sector + (fat_offset / sector_size);
 	unsigned int ent_offset = fat_offset % sector_size;
 
-	//at this point you need to read from sector "fat_sector" on the disk into "FAT_table".
+	// at this point you need to read from sector "fat_sector" on the disk into "FAT_table".
 	fseek(fatFile, fat_sector * sector_size, SEEK_SET);
 	fread(FAT_table, sector_size, 1, fatFile);
 
+	// get the next location in the table
 	unsigned short table_value = *(unsigned short*)&FAT_table[ent_offset];
 	return table_value; 
-	//the variable "table_value" now has the information you need about the next cluster in the chain.
+	// the variable "table_value" now has the information you need about the next cluster in the chain.
 }
 
-int findDir(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {
+long findDir(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {
+	/* find the location of a given subdirectory within a directory; if unsuccessful, return -1 */
 	// do ls and compare filenames with name
 	// if the name matches, check if it's a directory
 	int i,j; char* currFilename = new char[8];
 	//switch to while loop
 	i=0;
+	// Keep searching until the filename being considered is blank
 	while(dir[i].filename[0] != 0x00) {
 		j=0;
 		while(j<8) {
@@ -233,30 +242,27 @@ int findDir(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {
 			if(dir[i].filename[j] == ' ') {
 				break;
 			}
+			// Add only the first 8 characters to the word to compare against the "name" passed into this function
 			currFilename[j] = dir[i].filename[j];
 			j++;
 		}
-		//cout << currFilename << "\n" << name << "\n ---- \n";
-		//cout << "length: " << strlen(name) << "\n";
+		// if there is a match and it is a directory, find the hex location of that directory entry
 		if(strncmp(currFilename, name, strlen(name))==0) {
-		//if(strcmp(currFilename, name)==0) {	
 			if(isDirectory(dir[i], fatFile)) {
-				//cout << "FOUND THIS: " << dir[i].filename << "\n";
-				//if(realName != NULL) {
-					//printDirEntry(dir[i]);
-					//*realName = string(dir[i].filename, std::find(dir[i].filename, dir[i].filename+8, '\0'));
-				//}
 				return getFileLocation(dir[i].starting_cluster, fatFile, b);
 			}
 		}
 		i++;
 	}
+	// return -1 if unsuccessful
 	return -1;
 }
 
 int findFileIndex(char* name, char* ext, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {	
+	/* Return the index of a file within a given directory; if unsuccessful, return -1*/
 	int i,j; char* currFilename = new char[8];
 	i=0;
+	// Keep searching until the filename being considered is blank
 	while(dir[i].filename[0] != 0x00)	{
 		j=0;	
 		while(j<8) {
@@ -264,19 +270,14 @@ int findFileIndex(char* name, char* ext, FILE* fatFile, Fat16Entry* dir, Fat16Bo
 			if(dir[i].filename[j] == ' ') {
 				break;
 			}
+			// Add only the first 8 characters to the word to compare against the "name" passed into this function
 			currFilename[j] = dir[i].filename[j];
 			j++;
 		}
-		//cout << currFilename << "\n" << name << "\n ---- \n";
 
+		// if there is a match in the filename and the extension matches, return the index within the directory
 		if(strncmp(currFilename, name, strlen(name)-1)==0) {
-			//cout << "made it part way\n";
 			if(strncmp((char*)dir[i].ext, ext, 3)==0) {
-				//cout << "FOUND THIS: " << dir[i].filename << "\n";
-				//cout << "first fat sector location is: " << b->reserved_sectors * b->sector_size << "\n";
-				//cout << "getTableValue: " << getTableValue(b->sector_size, dir[i].starting_cluster, b->reserved_sectors, fatFile) << "\n";
-				//return getFileLocation(dir[i], fatFile, b);
-				//return dir[i];
 				return i;
 			}
 		}
@@ -286,89 +287,100 @@ int findFileIndex(char* name, char* ext, FILE* fatFile, Fat16Entry* dir, Fat16Bo
 }
 
 char* getFilenameAndExt(char **filename) {
+	/* parse the filename, such that the extension is returned, and the original filename has the extension removed */
   char *lastDot = strrchr(*filename, '.');
-  //if(!dot || dot == filename) return "";
+	// if the function found an instance of '.', set the dot to '\0' for parsing reasons
   if(lastDot != NULL)
 		*lastDot = '\0';
-	//if(!lastDot || lastDot == *filename) return "";
+	// return the a pointer to the character right after the last dot (the extension)
 	return lastDot + 1;
 }
 
-void traceLinkedList(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, int systemFile) {
-	unsigned short nextFatLocation = getTableValue(b->sector_size, file.starting_cluster, b->reserved_sectors, fatFile);
-	cout << "nextFatLocation: " << nextFatLocation << "\n";
-	while(nextFatLocation < 0xFFF8) {
-		nextFatLocation = getTableValue(b->sector_size, nextFatLocation, b->reserved_sectors, fatFile);
-		cout << "nextFatLocation: " << nextFatLocation << "\n";
-	}
-}
-
 void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFile) {
+	/* The meat of cpout; writes a file from the Fat16 Volume to a specified system file */
+	// create variables for the location to be used either in the case of small or large files and cluster size
 	unsigned int locationInBytes;
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
-	cout << "File size: " << file.file_size << "\n";
-	if(file.file_size < cluster_size) {
-		//char* readBuff2[file.file_size];
-		cout << "small file. file size = " << file.file_size << "\n";
+	
+	// if the file is smaller than or equal to the size of one cluster
+	if(file.file_size <= cluster_size) {
+		// create one buffer of the size of the file
 		char* readBuff[file.file_size];
 		
+		// get the file location based on starting cluster in directory entry and write to that location
 		locationInBytes = getFileLocation(file.starting_cluster, fatFile, b);
-		cout << "locationInBytes: " << locationInBytes << "\n";
 		fseek(fatFile, locationInBytes, SEEK_SET);
 		fread(readBuff, 1, file.file_size, fatFile);
 		fwrite(readBuff, 1, file.file_size, systemFile);
 	}
+	// if the file is larger than the size of one cluster
 	else {
-		//int cluster_size = b->sector_size * b->sectors_per_cluster;
-		cout << "large file. cluster size: " << cluster_size << "\n";
-		cout << "occurances of cluster size: " << file.file_size / cluster_size << "\n";
-		cout << "    remaining: " << file.file_size % cluster_size << "\n";
-		
+		// create one reusable buffer of the size of one cluster
 		char* readBuff1[cluster_size];
+		// create second buffer for remaining data in file after clusters
 		char* readBuff2[file.file_size % cluster_size];
+		// follow linked list based on nextStarting cluster - initialize to starting cluster of the new directory entry
 		unsigned short nextStartingCluster = file.starting_cluster;
 		
 		while(nextStartingCluster < 0xFFF8) {
+			// advance location based on previously found starting cluster
 			locationInBytes = getFileLocation(nextStartingCluster, fatFile, b);
+			// get next starting cluster
 			nextStartingCluster = getTableValue(b->sector_size, nextStartingCluster, b->reserved_sectors, fatFile);	
+			// if not on last cluster, write full cluster size
 			if(nextStartingCluster < 0xFFF8) {
-				cout << "locationInBytes: " << locationInBytes << "\n";
 				fseek(fatFile, locationInBytes, SEEK_SET);
 				fread(readBuff1, 1, cluster_size, fatFile);
 				fwrite(readBuff1, 1, cluster_size, systemFile);
 			}
 			else {
-				cout << "last locationInBytes: " << locationInBytes << "\n";
 				fseek(fatFile, locationInBytes, SEEK_SET);
-				fread(readBuff2, 1, cluster_size, fatFile);
-				fwrite(readBuff2, 1, cluster_size, systemFile);
+				// if remaining is exactly the size of a cluster, write it all
+				if(file.file_size % cluster_size == 0) {
+					fread(readBuff1, 1, cluster_size, fatFile);
+					fwrite(readBuff1, 1, cluster_size, systemFile);	
+				}
+				// otherwise only write remaining data, smaller than a cluster
+				else {
+					fread(readBuff2, 1, file.file_size % cluster_size, fatFile);
+					fwrite(readBuff2, 1, file.file_size % cluster_size, systemFile);
+				}
 			}
 		}
 	}
 }
 
+void makeIntoEight(char* filename, char* newFileName) {
+	/* Add spaces after the last letter in the name such that the filename contains a total of 8 characters */
+	int i;
+	bool stillLetters = true;
+
+	// if the end of the char array has been reached and length isn't 8, add spaces after that point
+	for(i=0; i<8; i++) {
+		if((filename[i] != '\0') & (stillLetters)) {
+			newFileName[i] = filename[i];
+		}
+		else {
+			newFileName[i] = ' ';
+			stillLetters = false;
+		}
+	}
+}
+
 unsigned int findOpenFatLoc(unsigned short* fat_table) {
+	/* Finds the first unoccupied spot in the fat table */
 	int j=0;
 	while(fat_table[j] != 0) {
-		//cout << "-- " << fat_table[i] << "\n";
 		j++;
 	}
 	return j;
 }
 
 Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, unsigned int file_size, unsigned short startingCluster) {
-  // unsigned char filename[8];
-  // unsigned char ext[3];
-  // unsigned char attributes;
-  // unsigned char reserved[10];
-  // unsigned short modify_time;
-  // unsigned short modify_date;
-  // unsigned short starting_cluster;
-	// int32_t file_size; 
+	/* For cpin - create a new FAT16Entry with a given filename and extension */
 	Fat16Entry newEntry;
-	cout << "filename: " << filename << "\n";
+	// copy over fields into new Fat16Entry, and set unimportant fields to 0
 	strncpy((char*)(newEntry.filename), filename, 8);
-	cout << "ext: " << ext << "\n";
 	strncpy((char*)(newEntry.ext), ext, 3);
 	memset(&(newEntry.attributes), 0, 1);
 	memset(&(newEntry.reserved), 0, 10);
@@ -376,122 +388,126 @@ Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, unsigned i
 	memset(&(newEntry.modify_date), 0, sizeof(unsigned short));
 	newEntry.starting_cluster = startingCluster;
 	newEntry.file_size = file_size;
-	cout << "THIS FILESIZE IS: " << newEntry.file_size << "\n";
-	printDirEntry(newEntry);
+	//printDirEntry(newEntry); // for testing
 	return newEntry;
 }
 
 unsigned int findEmptySpotDir(FILE* fatFile, unsigned int currentLocation) {
+	/* Find empty spot in current directory; used for placing new file with copyin */ 
 	// NEED LOCATION OF CURRENT DIRECTORY
 	//Fat16Entry* checker = new Fat16ENtry;
 	char* checker = new char;
 	int i = 0;
+	// seek to current location (the location of the directory currently in)
 	fseek(fatFile, currentLocation, SEEK_SET);
+	// first read to initialize checker
 	fread(checker, 2, 1, fatFile);
 	while(*checker != 0x00) {
+		// seek forward 1 entry -2 because of length 2 previos read 
 		fseek(fatFile, (sizeof(Fat16Entry))-2, SEEK_CUR);
+		// read two characters
 		fread(checker, 2, 1, fatFile);
 		i++;
 	}
-	//fwrite(*i, sizeof(unsigned short), 1, fatFile);
+	// -2 is because fread will read 2 characters ahead of point in file
 	unsigned int openLoc = ftell(fatFile)-2;
 	return openLoc;
-	//cout << "location: " << openLoc << endl;
-	//fwrite(newEntry, 1, sizeof(Fat16Entry), fatFile);
 }
 
 void writeNewDir(FILE* fatFile, unsigned int newDirLoc, Fat16Entry* newEntry) {
-	cout << "new dir location: " << newDirLoc << endl;
-	cout << "filesize: " << newEntry->file_size << endl;
-	cout << "starting cluster: " << newEntry->starting_cluster << "\n\n";
+	/* write a new dir entry to the FAT volume */
 	fseek(fatFile, newDirLoc, SEEK_SET);
 	fwrite(newEntry, 1, sizeof(Fat16Entry), fatFile);
 }
 
 void writeToData(int starting_cluster, FILE* fatFile, Fat16BootSector* b, FILE* systemFile, unsigned int writeBuffSize, unsigned int systemIndex) {
+	/* write chunk of data to volume of size "writeBuffSize" */	
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
 	unsigned int dataLoc = getFileLocation(starting_cluster, fatFile, b);
-	cout << "writing data at location: " << dataLoc << endl;
 	
+	// create buffer of size passed in
 	char writeBuff[writeBuffSize];
-	cout << "write buffer size: " << writeBuffSize << endl;
 	
-	cout << "writing from system file locaiton: " << systemIndex * cluster_size << endl;
+	// seek to spot in system to read data from and read into writeBuff
 	fseek(systemFile, (systemIndex * cluster_size), SEEK_SET);
-	fread(writeBuff, sizeof(char), writeBuffSize, systemFile);	
+	fread(writeBuff, sizeof(char), writeBuffSize, systemFile);
+	// seek to spot in data to write to and write data from writeBuff
 	fseek(fatFile, dataLoc, SEEK_SET);
 	fwrite(writeBuff, sizeof(char), writeBuffSize, fatFile);
 }
 
 void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, int* currentLocation) {
-	char* ext = getFilenameAndExt(&newName);	
+	/* Handles bulk of the work for copying files from the local file system to the FAT Volume */
+	// format filename and extension
+	char* ext = getFilenameAndExt(&newName);
+	char resizedFileName[8];
+	makeIntoEight(newName, resizedFileName);
+	
+	// create variables for the first fat location and the cluster size
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
 	unsigned int first_fat_location = b->reserved_sectors * b->sector_size;
 	
+	// create buffer to hold FAT table and read it in 
 	unsigned short fat_table[b->fat_size_sectors * b->sector_size];
 	fseek(fatFile, first_fat_location, SEEK_SET);
 	fread(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
 	
+	// get size of system file by seeking to end and noting where this is
 	fseek(systemFile, 0L, SEEK_END);
 	unsigned int systemFileSize = ftell(systemFile);
 
+	// create new starting cluster location based on first open location in FAT table
 	int newStartingCluster = findOpenFatLoc(fat_table);
+	// create new directory entry and write it at the first empty location in the current directory
 	Fat16Entry newFile = createFat16Entry(newName, ext, fatFile, systemFileSize, (unsigned short) newStartingCluster);
 	unsigned int newDirLoc = findEmptySpotDir(fatFile, *currentLocation); // NEED TO CHANGE TO CORRECT PATH
 	writeNewDir(fatFile, newDirLoc, &newFile);
 
-	int i=-1;
+	int i;
 	int prevFatIndex;
 	int fatUpdateIndex;
 	
-	// -1 is included to ensure that last part is done outside of while loop for file exactly of power-of-two size
 	for(i=0; i<((systemFileSize-1)/cluster_size); i++) {
 		newStartingCluster = findOpenFatLoc(fat_table);
-		// placeholder
+		// placeholder of 1 so that spot will not be seen as free before update
 		fat_table[newStartingCluster] = 1;
+		// advance through "linked list"; update previous to current and current to next
 		prevFatIndex = fatUpdateIndex;
 		fatUpdateIndex = newStartingCluster;
-		//cout << "update location: " << (first_fat_location + newStartingCluster * sizeof(short)) << endl;
   	if(i>0) {
-			// seek to previously modified FAT location and write next (now current) location into it
-			//fseek(fatFile, prevFatLoc, SEEK_SET);
-			//fwrite(&fatUpdateLoc, 1, 1, fatFile);
-			cout << "fat_table[" << prevFatIndex << "] = " << fatUpdateIndex << endl;
+			// Create update previous index to "point" to new index 
 			fat_table[prevFatIndex] = fatUpdateIndex;
 		}
-		// NEED TO CHECK FOR CASE WHERE FILE ALREADY EXISTS
+		// write the data of the file
 		writeToData(newStartingCluster, fatFile, b, systemFile, cluster_size, i);
 	}
-	
+	// update starting cluster to open location in FAT table
 	newStartingCluster = findOpenFatLoc(fat_table);
 	
+	// advance through "linked list"
 	prevFatIndex = fatUpdateIndex;
 	fatUpdateIndex = newStartingCluster;
+
   if(systemFileSize > cluster_size) { 
 		// if other FAT locations were used, seek to previously modified FAT location and write next (now current) location into it
-		//fseek(fatFile, prevFatLoc, SEEK_SET);
-		//fwrite(&fatUpdateLoc, 1, 1, fatFile);
 		fat_table[prevFatIndex] = fatUpdateIndex;
-		cout << "fat_table[" << prevFatIndex << "] = " << fatUpdateIndex << endl;
 		// write entire fat out
 		fseek(fatFile, first_fat_location, SEEK_SET);
 		fwrite(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
 	}
 
 	unsigned int fatUpdateLoc = first_fat_location + newStartingCluster * sizeof(short);
-  cout << "last FAT location to update: " << fatUpdateLoc << endl;
 	// signal that this is last cluster
 	unsigned short end = 0xFFFF;
 	fseek(fatFile, fatUpdateLoc, SEEK_SET);
 	fwrite(&end, sizeof(short), 1, fatFile);
 
-	cout << "i before last copy = " << i << endl;
-	// NEED TO CHECK FOR CASE WHERE FILE ALREADY EXISTS
+	// if remaining is exactly the size of a cluster, write it all
 	if(systemFileSize%cluster_size == 0) {
 		writeToData(newStartingCluster, fatFile, b, systemFile, cluster_size, i);
 	}
+	// otherwise only write remaining data, smaller than a cluster
 	else {
-		cout << "extra stuff of size: " << systemFileSize % cluster_size << endl;
 		writeToData(newStartingCluster, fatFile, b, systemFile, (systemFileSize % cluster_size), i);
 	}
 }
@@ -501,6 +517,7 @@ void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, 
 ////////////////////////////
 
 void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc) {
+	/* Function called when "ls" is entered; prints out applicable files in a given directory */
 	int locToRestore = *currentLocation;
 	if(strncmp((input + 3), "", 3)==0) {
 		*currentDirectory = readInDir(*currentLocation, fatFile);
@@ -514,15 +531,13 @@ void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 		int i;
 		
 		for(i=0; i<numTokens; i++) {
-			cout << "attempting token: " << tokens[i] << "\n";
-			int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
+			//cout << "attempting token: " << tokens[i] << "\n";
+			long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 			if(dirLoc==-1) {
-				cout << "invalid directory\n";
+				//cout << "invalid directory\n";
 				break;
 			}
 			else {
-				//cout << "i: " << i << "\n";
-				//cout << "location: " << dirLoc << "\n";
 				*currentLocation = dirLoc;
 				*currentDirectory = readInDir(*currentLocation, fatFile);
 			}
@@ -536,9 +551,9 @@ void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 }
 
 void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc, stack<string> *cdNameStack, string* cdName) {
+	/* Command called when user enters "cd" - changes current directory to one specified by a relative path */
 	if(strncmp((input + 3), "", 3)==0) {
 		*currentLocation = rootDirLoc;
-		//cout << "current location: " << currentLocation << "\n";
 	}
 	else {
 	  char** tokens = new char*[101 * sizeof(char*)];
@@ -548,16 +563,12 @@ void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 		int i;
 		
 		for(i=0; i<numTokens; i++) {
-			int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
-			//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
+			long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 			if(dirLoc==-1) {
 				cout << "invalid directory\n";
 				break;
 			}
 			else {
-				//cout << "i: " << i << "\n";
-				//cout << "location: " << dirLoc << "\n";
-				//cout << "current directory name: " << cdName << endl;
 				if(strncmp(tokens[i], ".", 2)==0);
 				else if(strncmp(tokens[i], "..", 3)==0) {
 					cdNameStack->pop();
@@ -571,7 +582,6 @@ void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 				else {
 					cdNameStack->push((string)tokens[i]);
 					if(cdNameStack->size() == 2) {
-						//cout << "stack has only one\n";
 						*cdName += (string)tokens[i];
 					}	
 					else {
@@ -586,10 +596,11 @@ void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 }
 
 void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+	/* Function called when user enters cpout; copies file from FAT volume to local file system */
+	// The bulk of the work is done in the copyOut function
 	*currentDirectory = readInDir(*currentLocation, fatFile);
 	if(strncmp((input + 6), "", 3)==0) {
 		cout << "must request file for copyout\n";
-		//cout << "current location: " << currentLocation << "\n";
 	}
 	else {
 	  char** args = new char*[3 * sizeof(char*)];
@@ -597,7 +608,6 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 	  int numArgs;
 	  createTokenArray(arg1, args, &numArgs, " ");
 	 
-		//int systemFile = open(args[2], O_WRONLY | O_CREAT | O_TRUNC, 00664);
 		FILE* systemFile = fopen(args[2], "wb");
 
 		char** tokens = new char*[101 * sizeof(char*)];
@@ -606,30 +616,23 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 	  createTokenArray(token, tokens, &numTokens, "/");
 		
 		int locToRestore = *currentLocation;
-		Fat16Entry* dirToRestore = new Fat16Entry;
-		dirToRestore = *currentDirectory;
 
 		int i;
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
+				cout << "copyout dirloc is: " << *currentLocation << endl;
 				char* ext = getFilenameAndExt(&tokens[i]);
-				//createFat16Entry(tokens[i], ext, fatFile, systemFile);
 					
 				int fileIndex = findFileIndex(tokens[i], ext, fatFile, *currentDirectory, b);
 				copyOut(fatFile, (*currentDirectory)[fileIndex], b, systemFile);
-				//int fileLoc = traceLinkedList(tokens[i], fatFile, currentDirectory, b);
-				//cout << "file loc is: " << fileLoc << "\n";
 			}
 			else {
-				int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
-				//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
+				long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 				if(dirLoc==-1) {
 					cout << "invalid directory\n";
 					break;
 				}
 				else {
-					//cout << "i: " << i << "\n";
-					//cout << "location: " << dirLoc << "\n";
 					*currentLocation = dirLoc;
 					*currentDirectory = readInDir(*currentLocation, fatFile);
 				}
@@ -637,15 +640,16 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 		}
 		fclose(systemFile);
 		*currentLocation = locToRestore;
-		*currentDirectory = dirToRestore;
+		*currentDirectory = readInDir(*currentLocation, fatFile);
 	}
 }
 
 
 void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+	/* Function called when user enters cpin; copies file from local file system to FAT Volume */
+	// The bulk of the work is done in the copyIn function
 	if(strncmp((input + 6), "", 3)==0) {
-		cout << "must request file for copyout\n";
-		//cout << "current location: " << currentLocation << "\n";
+		cout << "must request file for copyin\n";
 	}
 	else {
 	  char** args = new char*[3 * sizeof(char*)];
@@ -655,9 +659,10 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 	 
 		//int systemFile = open(args[2], O_WRONLY | O_CREAT | O_TRUNC, 00664);
 		FILE* systemFile = fopen(args[1], "r+b");
-		if(systemFile == NULL)
-			cout << "AHHH!! ERROR!\n";
-
+		if(systemFile == NULL) {
+			cout << "Invalid system file!\n";
+			exit(1);
+		}
 		char** tokens = new char*[101 * sizeof(char*)];
 	  char* token = strtok((args[2]), "/");
 	  int numTokens;
@@ -665,26 +670,20 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 		int i;
 		
 		int locToRestore = *currentLocation;
-		Fat16Entry* dirToRestore = new Fat16Entry;
-		dirToRestore = *currentDirectory;
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-
+				cout << "copyout dirloc is: " << *currentLocation << endl;
 				copyIn(tokens[i], b, fatFile, systemFile, currentLocation);
 				
-				//copyIn(fatFile, currentDirectory[fileIndex], b, systemFile);
 			}
 			else {
-				int dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
-				//cout << "tokens[" << i << "] = " << tokens[i] << "\n";
+				long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 				if(dirLoc==-1) {
 					cout << "invalid directory\n";
 					break;
 				}
 				else {
-					//cout << "i: " << i << "\n";
-					//cout << "location: " << dirLoc << "\n";
 					*currentLocation = dirLoc;
 					*currentDirectory = readInDir(*currentLocation, fatFile);
 				}
@@ -692,7 +691,7 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 		}
 		fclose(systemFile);
 		*currentLocation = locToRestore;
-		*currentDirectory = dirToRestore;
+		*currentDirectory = readInDir(*currentLocation, fatFile);
 	}
 }
 
@@ -702,30 +701,30 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 ////////////////////////////
 
 int main ( int argc, char *argv[] ) {	
+	// open up the file for reading and writing in binary mode
 	FILE * fatFile = fopen(argv[1], "r+b");
-	unsigned char ch;
+	// create char buffer to store information from boot sector
 	char bootBuff[1000 * sizeof(char)];
+	// create a pointer to a boot sector object
 	Fat16BootSector* b = new Fat16BootSector;
+	// read from fatFile into buffer, and cast the data into boot sector pointer
 	fread(bootBuff, sizeof(Fat16BootSector), 1, fatFile);
 	b = (Fat16BootSector*) bootBuff;
 	
-	//printBootSector(b);
-	
+	// Hold the location and size of the root directory	
 	int rootDirLoc = computeRootDirLocation(b);
 	int rootDirSize = b->root_dir_entries;
 	
+	// read in root directory by writing to buffer, casting to pointer to first entry in root
 	char buff[512 * sizeof(Fat16Entry)];
 	Fat16Entry* rootDir = new Fat16Entry[512];
 	fseek(fatFile, rootDirLoc, SEEK_SET);
 	fread(buff, 512 * sizeof(Fat16Entry), 1, fatFile);
 	rootDir = (Fat16Entry*) buff;
-	int rootDirNumEntries;
 
-	//printDir(rootDir);
-
+	
 	int dataDirLoc = computeDataLocation(b);
 	
-	//cout << dataDirLoc << "\n\n";
 	Fat16Entry* dataStart = new Fat16Entry;
 	
 	dataStart = readInDir(dataDirLoc, fatFile);
@@ -733,17 +732,14 @@ int main ( int argc, char *argv[] ) {
 	Fat16Entry* currentDirectory = new Fat16Entry;
 	
 	currentDirectory = rootDir;
-	int dirSize = rootDirNumEntries;
 	stack<string> cdNameStack;
 	string cdName = "/";
 	cdNameStack.push("/");
 
-	//cout << "Here's where parent is: " << getDirLocation(dataStart[1], fatFile, b) << "\n";
-
 	while(1) {
 		char* input = (char*)(malloc(102 * sizeof(char)));
     memset(input, 0, 102 * sizeof(char));
-    cout << ":" << cdName << "> ";
+		cout << ":" << cdName << "> ";
 		fgets(input, 101, stdin);
 		char* endOfInput = input+strlen(input)-1;
 		if(strncmp(endOfInput,"\n",1)==0) {
