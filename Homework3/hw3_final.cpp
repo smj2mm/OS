@@ -152,12 +152,31 @@ void printDir(Fat16Entry* dir) {
 		// if the directory fits the criteria for printing out
 		if(checkEntry(dir[i])) {
 			// if it's a subdirectory, only print the name
+			int j;
 			if((dir[i].attributes & SUBDIRECTORY) == SUBDIRECTORY) {
-				printf ("%.8s\n", dir[i].filename);
+				for(j=0; j<8; j++) {
+					if(dir[i].filename[j]== ' ') {
+						break;
+					}
+					else {
+						cout << dir[i].filename[j];
+					}
+					//printf ("%.8s\n", dir[i].filename);
+				}
+				cout << "\n";
 			}
 			else {
 				// if it's not a subdirectory, print the filename and extension
-				printf ("%.8s.%.3s\n", dir[i].filename, dir[i].ext);
+				for(j=0; j<8; j++) {
+					if(dir[i].filename[j] == ' ') {
+						break;
+					}
+					else {
+						cout << dir[i].filename[j];
+					}
+					//printf ("%.8s\n", dir[i].filename);
+				}
+				printf (".%.3s\n", dir[i].ext);
 			}
 		}
 		i++;
@@ -562,6 +581,7 @@ void handleCd(char* input, long* currentLocation, Fat16Entry** currentDirectory,
 		*currentLocation = rootDirLoc;
 	}
 	else {
+		// tokenize path for cd
 	  char** tokens = new char*[101 * sizeof(char*)];
 	  char* token = strtok((input+3), "/");
 	  int numTokens;
@@ -569,23 +589,30 @@ void handleCd(char* input, long* currentLocation, Fat16Entry** currentDirectory,
 		int i;
 		
 		for(i=0; i<numTokens; i++) {
+			// continually change location based on path entered
 			long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
+			// invalid input check
 			if(dirLoc==-1) {
 				cout << "invalid directory\n";
 				break;
 			}
 			else {
+				// do nothing if current director (.) entered
 				if(strncmp(tokens[i], ".", 2)==0);
+				// if we need to go up, pop off stack and change printed pathname
 				else if(strncmp(tokens[i], "..", 3)==0) {
 					cdNameStack->pop();
+					// if going up, usually need to remove last / and after
 					if(cdNameStack->size() > 1) {
 						cdName->erase(cdName->rfind('/'));
 					}
+					// if going to root, keep last /
 					else {
 						cdName->erase(cdName->rfind('/')+1);	
 					}
 				}
 				else {
+					// traversing down a path means adding to printed directory
 					cdNameStack->push((string)tokens[i]);
 					if(cdNameStack->size() == 2) {
 						*cdName += (string)tokens[i];
@@ -594,6 +621,7 @@ void handleCd(char* input, long* currentLocation, Fat16Entry** currentDirectory,
 						*cdName += "/" + (string)tokens[i];
 					}
 				}
+				// change directory location (general case)
 				*currentLocation = dirLoc;
 				*currentDirectory = readInDir(*currentLocation, fatFile);
 			}
@@ -610,6 +638,7 @@ void handleCpout(char* input, long* currentLocation, Fat16Entry** currentDirecto
 		cout << "must request file for copyout\n";
 	}
 	else {
+		// parse the entered arguments
 	  char** args = new char*[3 * sizeof(char*)];
 	  char* arg1 = strtok(input, " ");
 	  int numArgs;
