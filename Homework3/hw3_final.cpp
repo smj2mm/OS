@@ -380,6 +380,7 @@ void makeIntoEight(char* filename, char* newFileName) {
 		if((filename[i] != '\0') & (stillLetters)) {
 			newFileName[i] = filename[i];
 		}
+		// add spaces from here to end by flipping boolean flag
 		else {
 			newFileName[i] = ' ';
 			stillLetters = false;
