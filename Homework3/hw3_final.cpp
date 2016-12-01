@@ -789,7 +789,5 @@ int main ( int argc, char *argv[] ) {
 		}
 	}
 	// some garbage collection
-	delete[] bootBuff;
-	delete[] buff;
 	return 0;
 }
