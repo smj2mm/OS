@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <fcntl.h>
+#include <algorithm>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -100,40 +101,34 @@ int createSocketFD(int portNum) {
     close(SocketFD);
     exit(EXIT_FAILURE);
   }
-	/*
-  if (listen(SocketFD, 10) == -1) {
-    perror("listen failed");
-    close(SocketFD);
-    exit(EXIT_FAILURE);
-  }*/
 	return SocketFD;
 }
 
-void sendList() {
+void sendList(int SocketFD) {
+	//system("bash ls -l | awk '{print $5 $9}'");
 	system("ls -l > .listdirectory");
 	ifstream infile(".listdirectory");
 	string line;
 
-	FILE* systemFile = fopen(".listfinal", "wb");
-	fseek(systemFile, 0, SEEK_SET);
-
 	while(getline(infile, line)) {
 		char** columns = new char*[100 * sizeof(char*)];
+		memset(columns, 0, 100 * sizeof(char*));
     char* col = strtok((char*)line.c_str(), " ");
     int numColumns;
     createTokenArray(col, columns, &numColumns, " ");		
 		string newLine = "";
 		if(columns[4]!=NULL & columns[8]!=NULL) {
-			cout << "4: " << columns[4] << " 8: " << columns[8] << endl;
-			cout << "columns[4] = " << columns[4] << "|||\n";
-			string spaces = addSpaces(columns[4]);
-			newLine += string(columns[4]) + spaces + string(columns[8]) + "\n";
-			fwrite(newLine.c_str(), newLine.length(), 1, systemFile); 
+			//string spaces = addSpaces(columns[4]);
+			newLine += string(columns[8]) + "\t" + string(columns[4]) + "\r\n";
+			//fwrite(newLine.c_str(), newLine.length(), 1, systemFile); 
+			cout << newLine << endl;
+			write(SocketFD, newLine.c_str(), newLine.length());
 		}
 		delete[] columns;
 	}
-	system("rm -rf .listdirectory");
-	fclose(systemFile);
+	infile.close();
+  close(SocketFD);
+	//system("rm -rf .listdirectory");
 }
 
 int main(void)
@@ -143,6 +138,7 @@ int main(void)
 	int SocketFD = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	bool binaryMode = false;
 	bool fileMode = true;
+	int ClientSockFD;
 
 	char buff[100];
   if (SocketFD == -1) {
@@ -172,7 +168,7 @@ int main(void)
 
   for (;;) {
     int ConnectFD = accept(SocketFD, NULL, NULL);
-		
+			
     if (0 > ConnectFD) {
       perror("accept failed");
       close(SocketFD);
@@ -224,13 +220,13 @@ int main(void)
 					
 					char** ipNums = new char*[101 * sizeof(char*)];
     			char* firstNum = strtok(tokens[1], ",");
-    			int numNums;
-    			createTokenArray(firstNum, ipNums, &numNums, ",");
+    			int numIpNums;
+    			createTokenArray(firstNum, ipNums, &numIpNums, ",");
 					
-					int ftp_data_port = atoi(ipNums[numNums-2]) * 256 + atoi(ipNums[numNums-1]);
+					int ftp_data_port = atoi(ipNums[numIpNums-2]) * 256 + atoi(ipNums[numIpNums-1]);
 					
 					cout << "port number: " << ftp_data_port << endl;
-					int clientSockFD = createSocketFD(ftp_data_port);
+					ClientSockFD = createSocketFD(ftp_data_port);
 					cout << "ftp data port changed to: " << ftp_data_port << endl;
 					delete[] ipNums;
 				}
@@ -300,7 +296,16 @@ int main(void)
 			}
 
 			else if(strncmp("LIST", buff, 4)==0) {
-				write(ConnectFD, "200\r\n", 5);	
+			  /*
+				125, 150
+        	226, 250
+          425, 426, 451
+        450
+        500, 501, 502, 421, 530	
+				*/
+				write(ConnectFD, "125\r\n", 5);		
+				sendList(ClientSockFD);
+				write(ConnectFD, "226\r\n", 5);	
 			}
 
 			else if(strncmp("RETR", buff, 4)==0) {
@@ -316,6 +321,8 @@ int main(void)
 					write(ConnectFD, "503\r\n", 5);
 				}
 				else{
+					write(ConnectFD, "125\r\n", 5);
+					write(ClientSockFD, "AAAAAAAA\r\n", 10);
 					write(ConnectFD, "200\r\n", 5);	
 				}
 			}

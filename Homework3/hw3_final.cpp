@@ -1,8 +1,8 @@
 /*
 * Steven Jenny
-* 9/29/2016
+* 11/20/2016
 * CS 4414
-* Machine Problem 2 - Finding the Maximum Value
+* Machine Problem 3 - FAT File System
 */
 
 #include <stdio.h>
@@ -11,8 +11,10 @@
 #include <fstream>
 #include <iostream>
 #include <fcntl.h>
-
+#include <string.h>
 #include <stack>  // std::stack
+#include <algorithm>
+#include <sys/stat.h>
 
 // Macros for bitflags on attributes of a Fat16Entry
 #define	READ_ONLY 		0x01
@@ -253,6 +255,7 @@ long findDir(char* name, FILE* fatFile, Fat16Entry* dir, Fat16BootSector* b) {
 		}
 		i++;
 	}
+	// return -1 if unsuccessful
 	return -1;
 }
 
@@ -296,25 +299,36 @@ char* getFilenameAndExt(char **filename) {
 
 void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFile) {
 	/* The meat of cpout; writes a file from the Fat16 Volume to a specified system file */
+	// create variables for the location to be used either in the case of small or large files and cluster size
 	unsigned int locationInBytes;
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
-	if(file.file_size < cluster_size) {
+	
+	// if the file is smaller than or equal to the size of one cluster
+	if(file.file_size <= cluster_size) {
+		// create one buffer of the size of the file
 		char* readBuff[file.file_size];
 		
+		// get the file location based on starting cluster in directory entry and write to that location
 		locationInBytes = getFileLocation(file.starting_cluster, fatFile, b);
 		fseek(fatFile, locationInBytes, SEEK_SET);
 		fread(readBuff, 1, file.file_size, fatFile);
 		fwrite(readBuff, 1, file.file_size, systemFile);
 	}
+	// if the file is larger than the size of one cluster
 	else {
-		
+		// create one reusable buffer of the size of one cluster
 		char* readBuff1[cluster_size];
+		// create second buffer for remaining data in file after clusters
 		char* readBuff2[file.file_size % cluster_size];
+		// follow linked list based on nextStarting cluster - initialize to starting cluster of the new directory entry
 		unsigned short nextStartingCluster = file.starting_cluster;
 		
 		while(nextStartingCluster < 0xFFF8) {
+			// advance location based on previously found starting cluster
 			locationInBytes = getFileLocation(nextStartingCluster, fatFile, b);
+			// get next starting cluster
 			nextStartingCluster = getTableValue(b->sector_size, nextStartingCluster, b->reserved_sectors, fatFile);	
+			// if not on last cluster, write full cluster size
 			if(nextStartingCluster < 0xFFF8) {
 				fseek(fatFile, locationInBytes, SEEK_SET);
 				fread(readBuff1, 1, cluster_size, fatFile);
@@ -322,10 +336,12 @@ void copyOut(FILE* fatFile, Fat16Entry file, Fat16BootSector* b, FILE* systemFil
 			}
 			else {
 				fseek(fatFile, locationInBytes, SEEK_SET);
+				// if remaining is exactly the size of a cluster, write it all
 				if(file.file_size % cluster_size == 0) {
 					fread(readBuff1, 1, cluster_size, fatFile);
 					fwrite(readBuff1, 1, cluster_size, systemFile);	
 				}
+				// otherwise only write remaining data, smaller than a cluster
 				else {
 					fread(readBuff2, 1, file.file_size % cluster_size, fatFile);
 					fwrite(readBuff2, 1, file.file_size % cluster_size, systemFile);
@@ -340,6 +356,7 @@ void makeIntoEight(char* filename, char* newFileName) {
 	int i;
 	bool stillLetters = true;
 
+	// if the end of the char array has been reached and length isn't 8, add spaces after that point
 	for(i=0; i<8; i++) {
 		if((filename[i] != '\0') & (stillLetters)) {
 			newFileName[i] = filename[i];
@@ -363,6 +380,7 @@ unsigned int findOpenFatLoc(unsigned short* fat_table) {
 Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, unsigned int file_size, unsigned short startingCluster) {
 	/* For cpin - create a new FAT16Entry with a given filename and extension */
 	Fat16Entry newEntry;
+	// copy over fields into new Fat16Entry, and set unimportant fields to 0
 	strncpy((char*)(newEntry.filename), filename, 8);
 	strncpy((char*)(newEntry.ext), ext, 3);
 	memset(&(newEntry.attributes), 0, 1);
@@ -371,23 +389,28 @@ Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, unsigned i
 	memset(&(newEntry.modify_date), 0, sizeof(unsigned short));
 	newEntry.starting_cluster = startingCluster;
 	newEntry.file_size = file_size;
-	printDirEntry(newEntry);
+	//printDirEntry(newEntry); // for testing
 	return newEntry;
 }
 
-unsigned int findEmptySpotDir(FILE* fatFile, unsigned int currentLocation) {
+unsigned int findEmptySpotDir(FILE* fatFile, long currentLocation) {
 	/* Find empty spot in current directory; used for placing new file with copyin */ 
 	// NEED LOCATION OF CURRENT DIRECTORY
 	//Fat16Entry* checker = new Fat16ENtry;
 	char* checker = new char;
 	int i = 0;
+	// seek to current location (the location of the directory currently in)
 	fseek(fatFile, currentLocation, SEEK_SET);
+	// first read to initialize checker
 	fread(checker, 2, 1, fatFile);
 	while(*checker != 0x00) {
+		// seek forward 1 entry -2 because of length 2 previos read 
 		fseek(fatFile, (sizeof(Fat16Entry))-2, SEEK_CUR);
+		// read two characters
 		fread(checker, 2, 1, fatFile);
 		i++;
 	}
+	// -2 is because fread will read 2 characters ahead of point in file
 	unsigned int openLoc = ftell(fatFile)-2;
 	return openLoc;
 }
@@ -403,31 +426,40 @@ void writeToData(int starting_cluster, FILE* fatFile, Fat16BootSector* b, FILE* 
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
 	unsigned int dataLoc = getFileLocation(starting_cluster, fatFile, b);
 	
+	// create buffer of size passed in
 	char writeBuff[writeBuffSize];
 	
+	// seek to spot in system to read data from and read into writeBuff
 	fseek(systemFile, (systemIndex * cluster_size), SEEK_SET);
-	fread(writeBuff, sizeof(char), writeBuffSize, systemFile);	
+	fread(writeBuff, sizeof(char), writeBuffSize, systemFile);
+	// seek to spot in data to write to and write data from writeBuff
 	fseek(fatFile, dataLoc, SEEK_SET);
 	fwrite(writeBuff, sizeof(char), writeBuffSize, fatFile);
 }
 
-void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, int* currentLocation) {
+void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, long* currentLocation) {
 	/* Handles bulk of the work for copying files from the local file system to the FAT Volume */
+	// format filename and extension
 	char* ext = getFilenameAndExt(&newName);
 	char resizedFileName[8];
 	makeIntoEight(newName, resizedFileName);
-
+	
+	// create variables for the first fat location and the cluster size
 	int cluster_size = b->sector_size * b->sectors_per_cluster;
 	unsigned int first_fat_location = b->reserved_sectors * b->sector_size;
 	
+	// create buffer to hold FAT table and read it in 
 	unsigned short fat_table[b->fat_size_sectors * b->sector_size];
 	fseek(fatFile, first_fat_location, SEEK_SET);
 	fread(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
 	
+	// get size of system file by seeking to end and noting where this is
 	fseek(systemFile, 0L, SEEK_END);
 	unsigned int systemFileSize = ftell(systemFile);
 
+	// create new starting cluster location based on first open location in FAT table
 	int newStartingCluster = findOpenFatLoc(fat_table);
+	// create new directory entry and write it at the first empty location in the current directory
 	Fat16Entry newFile = createFat16Entry(newName, ext, fatFile, systemFileSize, (unsigned short) newStartingCluster);
 	unsigned int newDirLoc = findEmptySpotDir(fatFile, *currentLocation); // NEED TO CHANGE TO CORRECT PATH
 	writeNewDir(fatFile, newDirLoc, &newFile);
@@ -438,26 +470,28 @@ void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, 
 	
 	for(i=0; i<((systemFileSize-1)/cluster_size); i++) {
 		newStartingCluster = findOpenFatLoc(fat_table);
-		// placeholder
+		// placeholder of 1 so that spot will not be seen as free before update
 		fat_table[newStartingCluster] = 1;
+		// advance through "linked list"; update previous to current and current to next
 		prevFatIndex = fatUpdateIndex;
 		fatUpdateIndex = newStartingCluster;
-		//cout << "update location: " << (first_fat_location + newStartingCluster * sizeof(short)) << endl;
   	if(i>0) {
-			// Create linked list in fat table 
+			// Create update previous index to "point" to new index 
 			fat_table[prevFatIndex] = fatUpdateIndex;
 		}
+		// write the data of the file
 		writeToData(newStartingCluster, fatFile, b, systemFile, cluster_size, i);
 	}
-	
+	// update starting cluster to open location in FAT table
 	newStartingCluster = findOpenFatLoc(fat_table);
 	
+	// advance through "linked list"
 	prevFatIndex = fatUpdateIndex;
 	fatUpdateIndex = newStartingCluster;
+
   if(systemFileSize > cluster_size) { 
 		// if other FAT locations were used, seek to previously modified FAT location and write next (now current) location into it
 		fat_table[prevFatIndex] = fatUpdateIndex;
-		//cout << "fat_table[" << prevFatIndex << "] = " << fatUpdateIndex << endl;
 		// write entire fat out
 		fseek(fatFile, first_fat_location, SEEK_SET);
 		fwrite(fat_table, (b->fat_size_sectors * b->sector_size), 1, fatFile);
@@ -469,10 +503,11 @@ void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, 
 	fseek(fatFile, fatUpdateLoc, SEEK_SET);
 	fwrite(&end, sizeof(short), 1, fatFile);
 
-	// CURRENTLY DOES NOT CHECK FOR CASE WHERE FILE ALREADY EXISTS
+	// if remaining is exactly the size of a cluster, write it all
 	if(systemFileSize%cluster_size == 0) {
 		writeToData(newStartingCluster, fatFile, b, systemFile, cluster_size, i);
 	}
+	// otherwise only write remaining data, smaller than a cluster
 	else {
 		writeToData(newStartingCluster, fatFile, b, systemFile, (systemFileSize % cluster_size), i);
 	}
@@ -482,14 +517,17 @@ void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, 
 /**   COMMAND HANDLERS   **/
 ////////////////////////////
 
-void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc) {
+void handleLs(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc) {
 	/* Function called when "ls" is entered; prints out applicable files in a given directory */
-	int locToRestore = *currentLocation;
+	// save starting location
+	long locToRestore = *currentLocation;
+	// ls current directory
 	if(strncmp((input + 3), "", 3)==0) {
 		*currentDirectory = readInDir(*currentLocation, fatFile);
 		printDir(*currentDirectory);
 	}
 	else {
+		// parse input using new tokens array
 	  char** tokens = new char*[101 * sizeof(char*)];
 	  char* token = strtok((input+3), "/");
 	  int numTokens;
@@ -497,13 +535,13 @@ void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 		int i;
 		
 		for(i=0; i<numTokens; i++) {
-			//cout << "attempting token: " << tokens[i] << "\n";
 			long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 			if(dirLoc==-1) {
 				//cout << "invalid directory\n";
 				break;
 			}
 			else {
+				// change location (and directory)
 				*currentLocation = dirLoc;
 				*currentDirectory = readInDir(*currentLocation, fatFile);
 			}
@@ -512,11 +550,13 @@ void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 				printDir(*currentDirectory);	
 			}
 		}
+		delete[] tokens;
 	}
+	// restore original location
 	*currentLocation = locToRestore;
 }
 
-void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc, stack<string> *cdNameStack, string* cdName) {
+void handleCd(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc, stack<string> *cdNameStack, string* cdName) {
 	/* Command called when user enters "cd" - changes current directory to one specified by a relative path */
 	if(strncmp((input + 3), "", 3)==0) {
 		*currentLocation = rootDirLoc;
@@ -558,10 +598,11 @@ void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 				*currentDirectory = readInDir(*currentLocation, fatFile);
 			}
 		}
+		delete[] tokens;
 	}
 }
 
-void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+void handleCpout(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
 	/* Function called when user enters cpout; copies file from FAT volume to local file system */
 	// The bulk of the work is done in the copyOut function
 	*currentDirectory = readInDir(*currentLocation, fatFile);
@@ -574,23 +615,30 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 	  int numArgs;
 	  createTokenArray(arg1, args, &numArgs, " ");
 	 
+	 	// new file
 		FILE* systemFile = fopen(args[2], "wb");
-
+		// give all permissions to everyone
+		chmod(args[2], 0777);
+		// process input by tokenizing pathname
 		char** tokens = new char*[101 * sizeof(char*)];
 	  char* token = strtok((input+6), "/");
 	  int numTokens;
 	  createTokenArray(token, tokens, &numTokens, "/");
 		
-		int locToRestore = *currentLocation;
+		// save starting locaiton
+		long locToRestore = *currentLocation;
 
 		int i;
 		for(i=0; i<numTokens; i++) {
+			// For last token in path
 			if(i==numTokens-1) {
+				// get extension and isolate filename
 				char* ext = getFilenameAndExt(&tokens[i]);
-					
+				// find index of file and copy it out	
 				int fileIndex = findFileIndex(tokens[i], ext, fatFile, *currentDirectory, b);
 				copyOut(fatFile, (*currentDirectory)[fileIndex], b, systemFile);
 			}
+			// change directory along path (does check for invalid directory
 			else {
 				long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
 				if(dirLoc==-1) {
@@ -603,43 +651,48 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 				}
 			}	
 		}
+		// cleanup - close system file, restore old location and directory, and garbage collect
 		fclose(systemFile);
 		*currentLocation = locToRestore;
 		*currentDirectory = readInDir(*currentLocation, fatFile);
+		delete[] tokens;
 	}
 }
 
 
-void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+void handleCpin(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
 	/* Function called when user enters cpin; copies file from local file system to FAT Volume */
 	// The bulk of the work is done in the copyIn function
 	if(strncmp((input + 6), "", 3)==0) {
 		cout << "must request file for copyin\n";
 	}
 	else {
+		// create tokens based on arguments
 	  char** args = new char*[3 * sizeof(char*)];
 	  char* arg1 = strtok(input, " ");
 	  int numArgs;
 	  createTokenArray(arg1, args, &numArgs, " ");
 	 
-		//int systemFile = open(args[2], O_WRONLY | O_CREAT | O_TRUNC, 00664);
+	 	// open file for reading in binary mode
 		FILE* systemFile = fopen(args[1], "r+b");
 		if(systemFile == NULL) {
 			cout << "Invalid system file!\n";
 			exit(1);
 		}
+		// create token array based on path
 		char** tokens = new char*[101 * sizeof(char*)];
 	  char* token = strtok((args[2]), "/");
 	  int numTokens;
 	  createTokenArray(token, tokens, &numTokens, "/");
 		int i;
 		
-		int locToRestore = *currentLocation;
+		// save starting location
+		long locToRestore = *currentLocation;
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
+				//cout << "copyout dirloc is: " << *currentLocation << endl;
 				copyIn(tokens[i], b, fatFile, systemFile, currentLocation);
-				
 			}
 			else {
 				long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
@@ -653,6 +706,9 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 				}
 			}	
 		}
+		// garbage collection, close file, and restore old directory and location
+		delete[] args;
+		delete[] tokens;
 		fclose(systemFile);
 		*currentLocation = locToRestore;
 		*currentDirectory = readInDir(*currentLocation, fatFile);
@@ -686,35 +742,36 @@ int main ( int argc, char *argv[] ) {
 	fread(buff, 512 * sizeof(Fat16Entry), 1, fatFile);
 	rootDir = (Fat16Entry*) buff;
 
-	
-	int dataDirLoc = computeDataLocation(b);
-	
-	Fat16Entry* dataStart = new Fat16Entry;
-	
-	dataStart = readInDir(dataDirLoc, fatFile);
-	int currentLocation = rootDirLoc;
+	// create variable to hold current location and start at root
+	long currentLocation = rootDirLoc;
+	// create pointer to current directory
 	Fat16Entry* currentDirectory = new Fat16Entry;
-	
 	currentDirectory = rootDir;
+	// stack used for printing write path in prompt
 	stack<string> cdNameStack;
 	string cdName = "/";
 	cdNameStack.push("/");
 
 	while(1) {
+		// input from user
 		char* input = (char*)(malloc(102 * sizeof(char)));
     memset(input, 0, 102 * sizeof(char));
+		// prompt with :<pathname>>
 		cout << ":" << cdName << "> ";
 		fgets(input, 101, stdin);
 		char* endOfInput = input+strlen(input)-1;
+		// remove newline char
 		if(strncmp(endOfInput,"\n",1)==0) {
 			*remove(input, endOfInput, '\n') = '\0';
 		}
 		
     // check for exit string
     if(strncmp("exit", input, 5)==0) {
+			fclose(fatFile);
 			exit(0);
 		}
-		
+
+		// process different commands with "handle functions"
 		if(strncmp("ls", input, 2)==0) {
 			handleLs(input, &currentLocation, &currentDirectory, fatFile, b, rootDirLoc);
 		}
@@ -731,5 +788,8 @@ int main ( int argc, char *argv[] ) {
 			handleCpin(input, &currentLocation, &currentDirectory, fatFile, b);
 		}
 	}
+	// some garbage collection
+	delete[] bootBuff;
+	delete[] buff;
 	return 0;
 }

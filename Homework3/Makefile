@@ -2,13 +2,13 @@
 # smj2mm
 
 CXX=g++
-CXXFLAGS=-Wall -O2
+#CXXFLAGS=-Wall -O2
 FLAGS= -g
 
-OFILES = hw3.o
+OFILES = hw3_final.o
 
-max: $(OFILES)
-	$(CXX) -o max $(CXXFLAGS) $(OFILES) $(FLAGS)
+fat: $(OFILES)
+	$(CXX) -o fat $(OFILES) $(FLAGS)
 
 clean: 
 	/bin/rm -f *.o *~

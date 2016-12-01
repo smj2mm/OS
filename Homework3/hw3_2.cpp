@@ -392,7 +392,7 @@ Fat16Entry createFat16Entry(char* filename, char* ext, FILE* fatFile, unsigned i
 	return newEntry;
 }
 
-unsigned int findEmptySpotDir(FILE* fatFile, unsigned int currentLocation) {
+unsigned int findEmptySpotDir(FILE* fatFile, long currentLocation) {
 	/* Find empty spot in current directory; used for placing new file with copyin */ 
 	// NEED LOCATION OF CURRENT DIRECTORY
 	//Fat16Entry* checker = new Fat16ENtry;
@@ -436,7 +436,7 @@ void writeToData(int starting_cluster, FILE* fatFile, Fat16BootSector* b, FILE* 
 	fwrite(writeBuff, sizeof(char), writeBuffSize, fatFile);
 }
 
-void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, int* currentLocation) {
+void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, long* currentLocation) {
 	/* Handles bulk of the work for copying files from the local file system to the FAT Volume */
 	// format filename and extension
 	char* ext = getFilenameAndExt(&newName);
@@ -516,9 +516,9 @@ void copyIn(char* newName, Fat16BootSector* b, FILE* fatFile, FILE* systemFile, 
 /**   COMMAND HANDLERS   **/
 ////////////////////////////
 
-void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc) {
+void handleLs(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc) {
 	/* Function called when "ls" is entered; prints out applicable files in a given directory */
-	int locToRestore = *currentLocation;
+	long locToRestore = *currentLocation;
 	if(strncmp((input + 3), "", 3)==0) {
 		*currentDirectory = readInDir(*currentLocation, fatFile);
 		printDir(*currentDirectory);
@@ -550,7 +550,7 @@ void handleLs(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 	*currentLocation = locToRestore;
 }
 
-void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc, stack<string> *cdNameStack, string* cdName) {
+void handleCd(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b, int rootDirLoc, stack<string> *cdNameStack, string* cdName) {
 	/* Command called when user enters "cd" - changes current directory to one specified by a relative path */
 	if(strncmp((input + 3), "", 3)==0) {
 		*currentLocation = rootDirLoc;
@@ -595,7 +595,7 @@ void handleCd(char* input, int* currentLocation, Fat16Entry** currentDirectory, 
 	}
 }
 
-void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+void handleCpout(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
 	/* Function called when user enters cpout; copies file from FAT volume to local file system */
 	// The bulk of the work is done in the copyOut function
 	*currentDirectory = readInDir(*currentLocation, fatFile);
@@ -615,12 +615,12 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 	  int numTokens;
 	  createTokenArray(token, tokens, &numTokens, "/");
 		
-		int locToRestore = *currentLocation;
+		long locToRestore = *currentLocation;
 
 		int i;
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-				cout << "copyout dirloc is: " << *currentLocation << endl;
+				//cout << "copyout dirloc is: " << *currentLocation << endl;
 				char* ext = getFilenameAndExt(&tokens[i]);
 					
 				int fileIndex = findFileIndex(tokens[i], ext, fatFile, *currentDirectory, b);
@@ -645,7 +645,7 @@ void handleCpout(char* input, int* currentLocation, Fat16Entry** currentDirector
 }
 
 
-void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
+void handleCpin(char* input, long* currentLocation, Fat16Entry** currentDirectory, FILE* fatFile, Fat16BootSector* b) {
 	/* Function called when user enters cpin; copies file from local file system to FAT Volume */
 	// The bulk of the work is done in the copyIn function
 	if(strncmp((input + 6), "", 3)==0) {
@@ -669,13 +669,12 @@ void handleCpin(char* input, int* currentLocation, Fat16Entry** currentDirectory
 	  createTokenArray(token, tokens, &numTokens, "/");
 		int i;
 		
-		int locToRestore = *currentLocation;
+		long locToRestore = *currentLocation;
 
 		for(i=0; i<numTokens; i++) {
 			if(i==numTokens-1) {
-				cout << "copyout dirloc is: " << *currentLocation << endl;
+				//cout << "copyout dirloc is: " << *currentLocation << endl;
 				copyIn(tokens[i], b, fatFile, systemFile, currentLocation);
-				
 			}
 			else {
 				long dirLoc = findDir(tokens[i], fatFile, *currentDirectory, b);
@@ -728,7 +727,7 @@ int main ( int argc, char *argv[] ) {
 	Fat16Entry* dataStart = new Fat16Entry;
 	
 	dataStart = readInDir(dataDirLoc, fatFile);
-	int currentLocation = rootDirLoc;
+	long currentLocation = rootDirLoc;
 	Fat16Entry* currentDirectory = new Fat16Entry;
 	
 	currentDirectory = rootDir;

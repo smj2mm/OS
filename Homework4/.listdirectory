@@ -1,0 +1,5 @@
+total 80
+-rwxrwxr-x 1 vmuser vmuser 57462 Nov 30 17:43 a.out
+drwxrwxr-x 3 vmuser vmuser  4096 Nov 29 22:26 a.out.dSYM
+-rw-rw-r-- 1 vmuser vmuser  8683 Nov 30 17:43 homework4.cpp
+-rw-rw-r-- 1 vmuser vmuser  2530 Nov 30 17:26 turnFtpOnOff.txt
