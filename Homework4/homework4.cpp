@@ -128,7 +128,52 @@ void sendList(int SocketFD) {
 	}
 	infile.close();
   close(SocketFD);
-	//system("rm -rf .listdirectory");
+	system("rm -rf .listdirectory");
+}
+
+
+void sendFile(FILE* systemFile, int ClientSockFD) {
+	// get size of system file by seeking to end and noting where this is
+	fseek(systemFile, 0L, SEEK_END);
+	unsigned int systemFileSize = ftell(systemFile);
+	int blockSize = 4096;
+	char buff[blockSize];
+	fseek(systemFile, 0, SEEK_SET);
+
+	int i;
+	for(i=0; i<((systemFileSize-1)/blockSize); i++) {
+		fread(buff, sizeof(char), blockSize, systemFile);
+		cout << ftell(systemFile) << endl;
+		write(ClientSockFD,  buff, blockSize);
+	}
+
+	if(systemFileSize % blockSize == 0) {
+		fread(buff, sizeof(char), blockSize, systemFile);
+		cout << ftell(systemFile) << endl;
+		write(ClientSockFD,  buff, blockSize);
+	}
+	else {
+		char buff2[systemFileSize % blockSize];
+		fread(buff2, sizeof(char), (systemFileSize % blockSize), systemFile);
+		write(ClientSockFD, buff2, (systemFileSize % blockSize));
+	}
+  close(ClientSockFD);
+}
+
+void writeFile(FILE* systemFile, int ClientSockFD) {
+	// get size of system file by seeking to end and noting where this is
+	int blockSize = 4096;
+	char buff[blockSize];
+	fseek(systemFile, 0, SEEK_SET);
+	
+	int numBytesRead = read(ClientSockFD, buff, blockSize);
+	fwrite(buff, 1, numBytesRead, systemFile);
+
+	while(numBytesRead == 4096) {
+		numBytesRead = read(ClientSockFD, buff, blockSize);
+		fwrite(buff, 1, numBytesRead, systemFile);
+	}
+  close(ClientSockFD);
 }
 
 int main(void)
@@ -249,8 +294,9 @@ int main(void)
 
 				if(numTokens == 2) {	
 					write(ConnectFD, "200\r\n", 5);
-					if(strncmp(tokens[1],"I\r\n", 3)==0) {
+					if(strncmp(tokens[1],"I", 1)==0) {
 						binaryMode = true;
+						cout << "binaryMode is true!\n";
 					}
 					else {
 						binaryMode = false;
@@ -268,7 +314,26 @@ int main(void)
 				 200
       	 500, 501, 504, 421, 530
 				*/
+				char** tokens = new char*[101 * sizeof(char*)];
+    		char* token = strtok(buff, " ");
+    		int numTokens;
+    		createTokenArray(token, tokens, &numTokens, " ");
+
+				if(numTokens == 2) {
+					if(strncmp(tokens[1], "S\r\n", 3)==0) {
+						write(ConnectFD, "200\r\n", 5);	
+					}
+					else {
+						write(ConnectFD, "504\r\n", 5);
+					}
+				}
+				else {
+					cout << "too many args!" << endl;
+					write(ConnectFD, "501\r\n", 5);
+				}
+				delete[] tokens;
 			}
+
 			else if(strncmp("STRU", buff, 4)==0) {
 		  	/*
 				 200
@@ -318,12 +383,26 @@ int main(void)
          500, 501, 421, 530
 				*/
 				if(!binaryMode) {
+					cout << "Not TYPE BINARY!!!" << endl;
 					write(ConnectFD, "503\r\n", 5);
 				}
-				else{
+				else {
+    			char** args = new char*[3 * sizeof(char*)];
+    			char* arg1 = strtok(buff, " ");
+    			int numArgs;
+    			createTokenArray(arg1, args, &numArgs, " ");
+   
+    			// file to be read
+					string filename = string(args[1]);
+					filename.erase(filename.rfind('\r'));
+    			FILE* systemFile = fopen(filename.c_str(), "r+b");
+					cout << "filename: " << filename.c_str() << endl;
+					
 					write(ConnectFD, "125\r\n", 5);
-					write(ClientSockFD, "AAAAAAAA\r\n", 10);
+					sendFile(systemFile, ClientSockFD);
+					//write(ClientSockFD, "AAAAAAAA\r\n", 10);
 					write(ConnectFD, "200\r\n", 5);	
+					fclose(systemFile);
 				}
 			}
 
@@ -337,19 +416,26 @@ int main(void)
          500, 501, 421, 530
 				*/
 				if(!binaryMode) {
+					cout << "Not TYPE BINARY!!!" << endl;
 					write(ConnectFD, "503\r\n", 5);
 				}
-				else{
+				else {
+    			char** args = new char*[3 * sizeof(char*)];
+    			char* arg1 = strtok(buff, " ");
+    			int numArgs;
+    			createTokenArray(arg1, args, &numArgs, " ");
+   
+    			// file to be read
+					string filename = string(args[1]);
+					filename.erase(filename.rfind('\r'));
+    			FILE* systemFile = fopen(filename.c_str(), "wb");
+					cout << "filename: " << filename.c_str() << endl;
+					
+					write(ConnectFD, "125\r\n", 5);
+					writeFile(systemFile, ClientSockFD);
 					write(ConnectFD, "200\r\n", 5);	
+					fclose(systemFile);
 				}
-			}
-			else if(strncmp("PASV", buff, 4)==0) {
-				/*
-				 200
-         500 421
-				*/
-				//write(ConnectFD, "227\r\n", 5); 
-				write(ConnectFD, "200\r\n", 5); 
 			}
 
 			else if(strncmp("NOOP", buff, 4)==0) {
