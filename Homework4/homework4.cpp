@@ -504,15 +504,16 @@ int main( int argc, char *argv[] )
 			}
 		}
 		// shutdown and handle case of failure
-    if (shutdown(ConnectFD, SHUT_RDWR) == -1) {
+    /*
+		if (shutdown(ConnectFD, SHUT_RDWR) == -1) {
     	perror("shutdown failed");
     	close(ConnectFD);
     	close(SocketFD);
     	exit(EXIT_FAILURE);
     }
+		*/
 		// close the control connection
     close(ConnectFD);
-		break;
   }
 	// close the socket
   close(SocketFD);
