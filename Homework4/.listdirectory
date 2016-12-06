@@ -1,8 +1,0 @@
-total 136
--rwxrwxr-x 1 vmuser vmuser 60489 Dec  4 14:43 a.out
-drwxrwxr-x 3 vmuser vmuser  4096 Nov 29 22:26 a.out.dSYM
--rw-rw-r-- 1 vmuser vmuser  2530 Dec  4 14:25 blabla.txt
--rw-rw-r-- 1 vmuser vmuser 11015 Dec  4 14:43 homework4.cpp
--rw-rw-r-- 1 vmuser vmuser 45592 Dec  4 14:33 Picture1.png
-drwxrwxr-x 2 vmuser vmuser  4096 Dec  4 14:33 testdir
--rw-rw-r-- 1 vmuser vmuser  2530 Dec  4 01:22 turnFtpOnOff.txt
