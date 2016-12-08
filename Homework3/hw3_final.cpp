@@ -154,6 +154,7 @@ void printDir(Fat16Entry* dir) {
 			// if it's a subdirectory, only print the name
 			int j;
 			if((dir[i].attributes & SUBDIRECTORY) == SUBDIRECTORY) {
+				cout << "D ";
 				for(j=0; j<8; j++) {
 					if(dir[i].filename[j]== ' ') {
 						break;
@@ -167,6 +168,7 @@ void printDir(Fat16Entry* dir) {
 			}
 			else {
 				// if it's not a subdirectory, print the filename and extension
+				cout << "F ";
 				for(j=0; j<8; j++) {
 					if(dir[i].filename[j] == ' ') {
 						break;
