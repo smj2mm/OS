@@ -1,0 +1,5 @@
+Parallel Execution Time: 193.256 Seconds
+Parallel Execution Time: 138.292 Seconds
+Parallel Execution Time: 373.239 Seconds
+Parallel Execution Time: 574.502 Seconds
+Parallel Execution Time: 136.245 Seconds

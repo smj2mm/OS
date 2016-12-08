@@ -98,11 +98,15 @@ int createSocketFD(int portNum, int ControlFD) {
 	return SocketFD;
 }
 
-void sendList(int SocketFD) {
+void sendList(int SocketFD, string directory) {
 	/* Send list of files including filename and file size */
 	
 	// create a file that holds the output from ls -l and read it via ifstream
-	system("ls -al > /tmp/.listdirectory");
+	string arg = "";
+	arg.append("ls -al ");
+	arg.append(directory);
+	arg.append(" > /tmp/.listdirectory");
+	system(arg.c_str());
 	ifstream infile("/tmp/.listdirectory");
 	string line;
 
@@ -256,7 +260,7 @@ int main( int argc, char *argv[] )
 			memset(buff, 0, 100 * sizeof(char));
 			read(ConnectFD, buff, 100);
 			// The following line was used heavily in testing to check what was received
-			//cout << "client>: " << buff << "||" << endl;
+			// cout << "client>: " << buff << "||" << endl;
 			
 			/*
 				These commands needed to be implemented for basic implementation:
@@ -410,8 +414,22 @@ int main( int argc, char *argv[] )
 				binaryType = false;
 				// data connection open, about to send
 				write(ConnectFD, "125\r\n", 5);
-				// send file list over data connection
-				sendList(ClientSockFD);
+				
+				// tokenize input on delimiter " "
+				char** tokens = new char*[101 * sizeof(char*)];
+    		char* token = strtok(buff, " ");
+    		int numTokens;
+    		createTokenArray(token, tokens, &numTokens, " ");
+				if(numTokens == 2) {
+					// send file list over data connection
+					string directory = string(tokens[1]);
+					directory.erase(directory.rfind('\r'));
+					sendList(ClientSockFD, directory);
+				}
+				else {
+					// send file list over data connection
+					sendList(ClientSockFD, ".");
+				}
 				// closing data connection; requested file successful
 				write(ConnectFD, "226\r\n", 5);	
 			}
