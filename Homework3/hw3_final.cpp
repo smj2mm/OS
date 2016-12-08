@@ -604,7 +604,10 @@ void handleCd(char* input, long* currentLocation, Fat16Entry** currentDirectory,
 				if(strncmp(tokens[i], ".", 2)==0);
 				// if we need to go up, pop off stack and change printed pathname
 				else if(strncmp(tokens[i], "..", 3)==0) {
-					cdNameStack->pop();
+					if(cdNameStack->size() > 1) {
+						cdNameStack->pop();
+					}
+					else;
 					// if going up, usually need to remove last / and after
 					if(cdNameStack->size() > 1) {
 						cdName->erase(cdName->rfind('/'));
